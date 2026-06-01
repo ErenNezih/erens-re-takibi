@@ -9,18 +9,34 @@ datasource db {
 }
 
 model UserSetting {
-  id          String   @id @default(cuid())
-  startDate   DateTime @default(now())
-  startWeight Float?
+  id           String   @id @default(cuid())
+  startDate    DateTime @default(now())
+  startWeight  Float?
   targetWeight Float?
-  theme       String   @default("dark")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  theme        String   @default("dark")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Season {
+  id           String    @id @default(cuid())
+  name         String
+  type         String
+  startDate    DateTime
+  endDate      DateTime?
+  startWeight  Float?
+  targetWeight Float?
+  endWeight    Float?
+  note         String?
+  active       Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model DayLog {
   id               String   @id @default(cuid())
   date             DateTime @unique
+  weight           Float?
   morningWeight    Float?
   eveningWeight    Float?
   dietDone         Boolean  @default(false)
@@ -51,6 +67,8 @@ model Plan {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   dayTasks         DayTask[]
+
+  @@index([active, type])
 }
 
 model DayTask {
@@ -66,6 +84,7 @@ model DayTask {
   updatedAt DateTime @updatedAt
 
   @@unique([planId, date])
+  @@index([date])
 }
 
 model WorkoutTemplate {
@@ -99,12 +118,15 @@ model WorkoutSession {
   workoutTemplate   WorkoutTemplate? @relation(fields: [workoutTemplateId], references: [id], onDelete: SetNull)
   title             String
   completed         Boolean          @default(false)
+  totalVolume       Float?
   startedAt         DateTime?
   finishedAt        DateTime?
   note              String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   setLogs           WorkoutSetLog[]
+
+  @@index([date, completed])
 }
 
 model WorkoutSetLog {

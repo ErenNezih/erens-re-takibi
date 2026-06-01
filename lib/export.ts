@@ -3,6 +3,7 @@ import { prisma } from "./db";
 export async function exportAllData() {
   const [
     settings,
+    seasons,
     dayLogs,
     plans,
     dayTasks,
@@ -11,6 +12,7 @@ export async function exportAllData() {
     setLogs,
   ] = await Promise.all([
     prisma.userSetting.findMany(),
+    prisma.season.findMany({ orderBy: { startDate: "asc" } }),
     prisma.dayLog.findMany({ orderBy: { date: "asc" } }),
     prisma.plan.findMany({ orderBy: { startDate: "asc" } }),
     prisma.dayTask.findMany({ orderBy: { date: "asc" } }),
@@ -23,9 +25,10 @@ export async function exportAllData() {
   ]);
 
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     settings,
+    seasons,
     dayLogs,
     plans,
     dayTasks,
@@ -37,6 +40,7 @@ export async function exportAllData() {
 
 export async function importAllData(data: {
   settings?: unknown[];
+  seasons?: unknown[];
   dayLogs?: unknown[];
   plans?: unknown[];
   dayTasks?: unknown[];
@@ -49,6 +53,14 @@ export async function importAllData(data: {
     for (const s of data.settings as Record<string, unknown>[]) {
       const { id, createdAt, updatedAt, ...rest } = s;
       await prisma.userSetting.create({ data: rest as never });
+    }
+  }
+
+  if (data.seasons?.length) {
+    await prisma.season.deleteMany();
+    for (const s of data.seasons as Record<string, unknown>[]) {
+      const { id, createdAt, updatedAt, ...rest } = s;
+      await prisma.season.create({ data: rest as never });
     }
   }
 
@@ -85,7 +97,14 @@ export async function importAllData(data: {
       const exs = exercises as Record<string, unknown>[] | undefined;
       if (exs?.length) {
         for (const ex of exs) {
-          const { id: eid, createdAt: ca, updatedAt: ua, workoutTemplateId, workoutTemplate, ...exRest } = ex;
+          const {
+            id: eid,
+            createdAt: ca,
+            updatedAt: ua,
+            workoutTemplateId,
+            workoutTemplate,
+            ...exRest
+          } = ex;
           await prisma.workoutExerciseTemplate.create({
             data: { ...exRest, workoutTemplateId: created.id } as never,
           });

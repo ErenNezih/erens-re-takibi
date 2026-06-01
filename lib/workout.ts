@@ -1,6 +1,12 @@
 import { prisma } from "./db";
 import { getWeekdayNumber, startOfDay } from "./date";
 
+export function calcSessionVolume(
+  setLogs: { weight: number | null; reps: number | null }[]
+): number {
+  return setLogs.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
+}
+
 export async function getTodayTemplate(date: Date = new Date()) {
   const weekday = getWeekdayNumber(startOfDay(date));
   return prisma.workoutTemplate.findFirst({
@@ -52,9 +58,15 @@ export async function startWorkoutSession(date: Date, templateId?: string) {
 }
 
 export async function completeWorkoutSession(sessionId: string) {
+  const setLogs = await prisma.workoutSetLog.findMany({
+    where: { workoutSessionId: sessionId, completed: true },
+    select: { weight: true, reps: true },
+  });
+  const totalVolume = calcSessionVolume(setLogs);
+
   const session = await prisma.workoutSession.update({
     where: { id: sessionId },
-    data: { completed: true, finishedAt: new Date() },
+    data: { completed: true, finishedAt: new Date(), totalVolume },
   });
 
   await prisma.dayLog.upsert({
@@ -73,26 +85,16 @@ export async function logSet(
   weight: number | null,
   reps: number | null
 ) {
-  return prisma.workoutSetLog.upsert({
-    where: {
-      id: (
-        await prisma.workoutSetLog.findFirst({
-          where: { workoutSessionId: sessionId, exerciseName, setNumber },
-        })
-      )?.id ?? "new",
-    },
-    create: {
-      workoutSessionId: sessionId,
-      exerciseName,
-      setNumber,
-      weight,
-      reps,
-      completed: true,
-    },
-    update: { weight, reps, completed: true },
-  }).catch(async () => {
-    return prisma.workoutSetLog.create({
-      data: {
+  return prisma.workoutSetLog
+    .upsert({
+      where: {
+        id: (
+          await prisma.workoutSetLog.findFirst({
+            where: { workoutSessionId: sessionId, exerciseName, setNumber },
+          })
+        )?.id ?? "new",
+      },
+      create: {
         workoutSessionId: sessionId,
         exerciseName,
         setNumber,
@@ -100,8 +102,20 @@ export async function logSet(
         reps,
         completed: true,
       },
+      update: { weight, reps, completed: true },
+    })
+    .catch(async () => {
+      return prisma.workoutSetLog.create({
+        data: {
+          workoutSessionId: sessionId,
+          exerciseName,
+          setNumber,
+          weight,
+          reps,
+          completed: true,
+        },
+      });
     });
-  });
 }
 
 export async function getExerciseHistory(exerciseName: string, limit = 20) {

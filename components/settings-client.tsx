@@ -4,13 +4,11 @@ import { useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Download, Upload, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/use-toast";
 import { updateSettings, exportDataAction, importDataAction } from "@/lib/actions/settings";
 import { logoutAction } from "@/lib/actions/auth";
-import { toDateInputValue } from "@/lib/date";
 import type { UserSetting } from "@prisma/client";
 
 interface SettingsClientProps {
@@ -54,7 +52,9 @@ export function SettingsClient({ settings }: SettingsClientProps) {
       <h1 className="text-2xl font-bold">Ayarlar</h1>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Genel</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Görünüm</CardTitle>
+        </CardHeader>
         <CardContent>
           <form
             onSubmit={(e) => {
@@ -68,43 +68,48 @@ export function SettingsClient({ settings }: SettingsClientProps) {
             className="space-y-3"
           >
             <div className="space-y-1">
-              <Label>Başlangıç Tarihi</Label>
-              <Input name="startDate" type="date" defaultValue={toDateInputValue(settings.startDate)} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>Başlangıç Kilo</Label>
-                <Input name="startWeight" type="number" step="0.1" defaultValue={settings.startWeight ?? ""} />
-              </div>
-              <div className="space-y-1">
-                <Label>Hedef Kilo</Label>
-                <Input name="targetWeight" type="number" step="0.1" defaultValue={settings.targetWeight ?? ""} />
-              </div>
-            </div>
-            <div className="space-y-1">
               <Label>Tema</Label>
-              <select name="theme" defaultValue={settings.theme} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <select
+                name="theme"
+                defaultValue={settings.theme}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
                 <option value="dark">Koyu</option>
                 <option value="light">Açık</option>
                 <option value="system">Sistem</option>
               </select>
             </div>
             <Button type="submit" className="w-full h-11" disabled={isPending}>
-              <Save className="h-4 w-4 mr-2" />Kaydet
+              <Save className="h-4 w-4 mr-2" />
+              Kaydet
             </Button>
           </form>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Veri</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Veri</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2">
           <Button variant="outline" className="w-full h-11" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />JSON Export
+            <Download className="h-4 w-4 mr-2" />
+            JSON Export
           </Button>
-          <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
-          <Button variant="outline" className="w-full h-11" onClick={() => fileRef.current?.click()}>
-            <Upload className="h-4 w-4 mr-2" />JSON Import
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <Button
+            variant="outline"
+            className="w-full h-11"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            JSON Import
           </Button>
         </CardContent>
       </Card>
@@ -112,14 +117,17 @@ export function SettingsClient({ settings }: SettingsClientProps) {
       <Card>
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
-            Uygulama şifresi <code className="bg-muted px-1 rounded">APP_PASSWORD</code> environment variable ile ayarlanır.
+            Uygulama şifresi{" "}
+            <code className="bg-muted px-1 rounded">APP_PASSWORD</code> environment variable ile
+            ayarlanır.
           </p>
         </CardContent>
       </Card>
 
       <form action={logoutAction}>
         <Button variant="ghost" className="w-full text-muted-foreground">
-          <LogOut className="h-4 w-4 mr-2" />Çıkış
+          <LogOut className="h-4 w-4 mr-2" />
+          Çıkış
         </Button>
       </form>
     </div>

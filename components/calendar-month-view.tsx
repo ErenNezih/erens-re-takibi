@@ -7,14 +7,12 @@ import {
   endOfMonth,
   eachDayOfInterval,
   isSameDay,
-  isSameMonth,
   getDay,
 } from "date-fns";
-import { tr } from "date-fns/locale";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DayStatusDots } from "@/components/day-status-dots";
-import { toDateInputValue, today, formatMonthYear } from "@/lib/date";
+import { toDateInputValue, today, formatMonthYear, isPastDate, isFutureDate } from "@/lib/date";
 import type { DayStatus } from "@/lib/tasks";
 import { cn } from "@/lib/cn";
 
@@ -76,9 +74,21 @@ export function CalendarMonthView({ year, month, statusMap }: CalendarMonthViewP
             cycleDone: false,
             bloodworkPlanned: false,
             bloodworkDone: false,
+            hasPlannedDiet: false,
+            hasPlannedWorkout: false,
+            hasPlannedSupplements: false,
+            hasPlannedCycle: false,
             allComplete: false,
+            hasIncomplete: false,
+            isNeutral: true,
           };
           const isToday = isSameDay(day, todayDate);
+          const isPast = isPastDate(day);
+          const isFuture = isFutureDate(day);
+
+          const showCompleteBadge = isPast && status.allComplete;
+          const showIncompleteBadge =
+            (isPast || isToday) && !isFuture && status.hasIncomplete && !status.allComplete;
 
           return (
             <button
@@ -86,13 +96,25 @@ export function CalendarMonthView({ year, month, statusMap }: CalendarMonthViewP
               type="button"
               onClick={() => router.push(`/day/${key}`)}
               className={cn(
-                "aspect-square rounded-xl border p-1 flex flex-col items-center justify-between min-h-[52px] transition-colors active:scale-95",
+                "relative aspect-square rounded-xl border p-1 flex flex-col items-center justify-between min-h-[52px] transition-colors active:scale-95",
                 isToday
                   ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                   : "border-border bg-card hover:bg-accent/50",
-                status.allComplete && "border-success/50 bg-success/5"
+                showCompleteBadge && "border-success/50 bg-success/5",
+                showIncompleteBadge && isToday && "border-supplement/50"
               )}
             >
+              {showCompleteBadge && (
+                <Check className="absolute top-0.5 right-0.5 h-3 w-3 text-success" />
+              )}
+              {showIncompleteBadge && (
+                <AlertCircle
+                  className={cn(
+                    "absolute top-0.5 right-0.5 h-3 w-3",
+                    isToday ? "text-supplement" : "text-destructive/80"
+                  )}
+                />
+              )}
               <span
                 className={cn(
                   "text-sm font-medium leading-none",

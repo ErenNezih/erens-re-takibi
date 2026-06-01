@@ -15,6 +15,31 @@ async function main() {
     });
   }
 
+  const activeSeason = await prisma.season.findFirst({ where: { active: true } });
+  if (!activeSeason) {
+    const settings = await prisma.userSetting.findFirst();
+    if (settings?.startWeight || settings?.targetWeight) {
+      await prisma.season.create({
+        data: {
+          name: "Definasyon Süreci",
+          type: "DEFINITION",
+          startDate: settings.startDate,
+          startWeight: settings.startWeight,
+          targetWeight: settings.targetWeight,
+          active: true,
+        },
+      });
+    }
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "DayLog"
+    SET weight = COALESCE(weight, "morningWeight", "eveningWeight")
+    WHERE weight IS NULL AND ("morningWeight" IS NOT NULL OR "eveningWeight" IS NOT NULL)
+  `.catch(() => {
+    console.log("Weight backfill skipped (column may not exist yet)");
+  });
+
   const planCount = await prisma.plan.count();
   if (planCount === 0) {
     await prisma.plan.createMany({

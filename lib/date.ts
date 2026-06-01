@@ -7,6 +7,8 @@ import {
   parseISO,
   addMonths,
   subMonths,
+  isBefore,
+  isAfter,
 } from "date-fns";
 import { tr } from "date-fns/locale";
 
@@ -66,4 +68,19 @@ export function navigateMonth(year: number, month: number, delta: number) {
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-export { startOfDay, startOfMonth, endOfMonth, addMonths, subMonths, parseISO };
+export { startOfDay, startOfMonth, endOfMonth, addMonths, subMonths, parseISO, isBefore, isAfter };
+
+export function isPastDate(date: Date | string): boolean {
+  const d = startOfDay(typeof date === "string" ? parseDateInput(date) : date);
+  return isBefore(d, today());
+}
+
+export function isFutureDate(date: Date | string): boolean {
+  const d = startOfDay(typeof date === "string" ? parseDateInput(date) : date);
+  return isAfter(d, today());
+}
+
+export function isTodayDate(date: Date | string): boolean {
+  const d = startOfDay(typeof date === "string" ? parseDateInput(date) : date);
+  return toDateInputValue(d) === toDateInputValue(today());
+}

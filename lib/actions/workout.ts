@@ -102,11 +102,18 @@ export async function saveSetLog(
 }
 
 export async function finishWorkout(sessionId: string) {
+  const session = await prisma.workoutSession.findUnique({
+    where: { id: sessionId },
+    select: { date: true },
+  });
   await completeWorkoutSession(sessionId);
   revalidatePath("/workout");
   revalidatePath("/workout/start");
   revalidatePath("/today");
   revalidatePath("/calendar");
+  if (session) {
+    revalidatePath(`/day/${session.date.toISOString().split("T")[0]}`);
+  }
   return { success: true };
 }
 

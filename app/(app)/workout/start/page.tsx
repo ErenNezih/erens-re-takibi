@@ -3,14 +3,24 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkoutStartFlow } from "@/components/workout-start-flow";
 import { getActiveSession, getTodayTemplate, startWorkoutSession } from "@/lib/workout";
-import { startOfDay } from "@/lib/date";
+import { parseDateInput, startOfDay, today } from "@/lib/date";
 import { prisma } from "@/lib/db";
 
-export default async function WorkoutStartPage() {
-  const activeSession = await getActiveSession();
-  const template = await getTodayTemplate();
+interface WorkoutStartPageProps {
+  searchParams: Promise<{ date?: string }>;
+}
 
-  const session = activeSession ?? (await startWorkoutSession(startOfDay(new Date()), template?.id));
+export default async function WorkoutStartPage({ searchParams }: WorkoutStartPageProps) {
+  const params = await searchParams;
+  const date = params.date ? parseDateInput(params.date) : today();
+
+  const [activeSession, template] = await Promise.all([
+    getActiveSession(date),
+    getTodayTemplate(date),
+  ]);
+
+  const session =
+    activeSession ?? (await startWorkoutSession(date, template?.id));
 
   const existingLogs = await prisma.workoutSetLog.findMany({
     where: { workoutSessionId: session.id },
