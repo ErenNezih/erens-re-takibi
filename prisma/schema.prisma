@@ -46,6 +46,10 @@ model DayLog {
   bloodworkPlanned Boolean  @default(false)
   bloodworkDone    Boolean  @default(false)
   dietText         String?
+  calories         Int?
+  protein          Int?
+  carbs            Int?
+  fat              Int?
   bloodworkNote    String?
   note             String?
   createdAt        DateTime @default(now())
@@ -61,6 +65,10 @@ model Plan {
   endDate          DateTime?
   weekdays         String    @default("1,2,3,4,5,6,7")
   content          String?
+  targetCalories   Int?
+  targetProtein    Int?
+  targetCarbs      Int?
+  targetFat        Int?
   active           Boolean   @default(true)
   doctorSupervised Boolean   @default(false)
   repeatType       String?
@@ -100,6 +108,7 @@ model WorkoutTemplate {
   sessions     WorkoutSession[]
 
   @@unique([weekday, name])
+  @@index([weekday, active])
 }
 
 model WorkoutExerciseTemplate {
@@ -123,7 +132,7 @@ model WorkoutSession {
   title             String
   workoutGroup      String?
   completed         Boolean          @default(false)
-  totalVolume       Float?
+  totalVolume       Float?   @default(0)
   startedAt         DateTime?
   finishedAt        DateTime?
   note              String?

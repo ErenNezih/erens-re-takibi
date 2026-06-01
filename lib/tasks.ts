@@ -1,6 +1,9 @@
 import { prisma } from "./db";
 import {
   getWeekdayNumber,
+  isFutureDate,
+  isPastDate,
+  isTodayDate,
   parseWeekdays,
   startOfDay,
   toDateInputValue,
@@ -20,7 +23,10 @@ export type PlanType = (typeof PLAN_TYPES)[keyof typeof PLAN_TYPES];
 export const CYCLE_DISCLAIMER =
   "Bu bölüm yalnızca kişisel kayıt içindir. Uygulama tıbbi tavsiye, doz önerisi veya kullanım yönlendirmesi vermez. Sağlık kararları doktor kontrolünde verilmelidir.";
 
+export type CategoryState = "complete" | "incomplete" | "not_planned";
+
 type PlanForDate = {
+  id?: string;
   startDate: Date;
   endDate: Date | null;
   weekdays: string;
@@ -98,6 +104,15 @@ export interface DayStatus {
   allComplete: boolean;
   hasIncomplete: boolean;
   isNeutral: boolean;
+  diet: CategoryState;
+  workout: CategoryState;
+  supplement: CategoryState;
+  cycle: CategoryState;
+  bloodwork: CategoryState;
+  hasAnyPlan: boolean;
+  isPast: boolean;
+  isToday: boolean;
+  isFuture: boolean;
 }
 
 export function getEffectiveWeight(log: {
@@ -107,6 +122,39 @@ export function getEffectiveWeight(log: {
 } | null): number | null {
   if (!log) return null;
   return log.weight ?? log.morningWeight ?? log.eveningWeight ?? null;
+}
+
+type TaskRow = { planId?: string; type: string; completed: boolean };
+
+export function getActiveTasksForDate<T extends TaskRow>(
+  date: Date,
+  tasks: T[],
+  plansById: Map<string, PlanForDate>
+): T[] {
+  const d = startOfDay(date);
+  return tasks.filter((task) => {
+    if (!task.planId) return false;
+    const plan = plansById.get(task.planId);
+    if (!plan) return false;
+    return isPlanActiveForDate(plan, d);
+  });
+}
+
+function categoryTasksComplete(
+  plannedCount: number,
+  typeTasks: { completed: boolean }[]
+): boolean {
+  if (plannedCount === 0) return false;
+  return (
+    typeTasks.length > 0 &&
+    typeTasks.length === plannedCount &&
+    typeTasks.every((t) => t.completed)
+  );
+}
+
+function toCategoryState(planned: boolean, done: boolean): CategoryState {
+  if (!planned) return "not_planned";
+  return done ? "complete" : "incomplete";
 }
 
 export function computeDayCompletion(
@@ -121,7 +169,8 @@ export function computeDayCompletion(
   } | null,
   tasks: { type: string; completed: boolean }[],
   context: DayPlanContext,
-  workoutSessionCompleted: boolean
+  workoutSessionCompleted: boolean,
+  date?: Date
 ): DayStatus {
   const suppTasks = tasks.filter((t) => t.type === PLAN_TYPES.SUPPLEMENT);
   const cycleTasks = tasks.filter((t) => t.type === PLAN_TYPES.CYCLE);
@@ -130,31 +179,19 @@ export function computeDayCompletion(
   const hasWeight = getEffectiveWeight(log) !== null;
   const dietDone = log?.dietDone ?? false;
   const workoutDone = log?.workoutDone ?? workoutSessionCompleted;
-  const supplementsDone =
-    context.suppCount === 0
-      ? false
-      : suppTasks.length > 0
-        ? suppTasks.every((t) => t.completed)
-        : false;
-  const cycleDone =
-    context.cycleCount === 0
-      ? false
-      : cycleTasks.length > 0
-        ? cycleTasks.every((t) => t.completed)
-        : false;
+  const supplementsDone = categoryTasksComplete(context.suppCount, suppTasks);
+  const cycleDone = categoryTasksComplete(context.cycleCount, cycleTasks);
   const bloodworkPlanned = context.bloodCount > 0 || (log?.bloodworkPlanned ?? false);
   const bloodworkDone =
     context.bloodCount === 0
       ? false
-      : bloodTasks.length > 0
-        ? bloodTasks.every((t) => t.completed)
-        : (log?.bloodworkDone ?? false);
+      : categoryTasksComplete(context.bloodCount, bloodTasks);
 
   const checks: boolean[] = [];
   if (context.hasDietPlan) checks.push(dietDone);
-  if (context.suppCount > 0) checks.push(suppTasks.every((t) => t.completed));
-  if (context.cycleCount > 0) checks.push(cycleTasks.every((t) => t.completed));
-  if (context.bloodCount > 0) checks.push(bloodTasks.every((t) => t.completed));
+  if (context.suppCount > 0) checks.push(supplementsDone);
+  if (context.cycleCount > 0) checks.push(cycleDone);
+  if (context.bloodCount > 0) checks.push(bloodworkDone);
   if (context.hasWorkoutPlan) checks.push(workoutDone);
 
   const hasAnyPlan =
@@ -164,8 +201,17 @@ export function computeDayCompletion(
     context.bloodCount > 0 ||
     context.hasWorkoutPlan;
 
-  const allComplete = hasAnyPlan && checks.length > 0 && checks.every(Boolean);
-  const hasIncomplete = hasAnyPlan && checks.some((c) => !c);
+  let allComplete = hasAnyPlan && checks.length > 0 && checks.every(Boolean);
+  let hasIncomplete = hasAnyPlan && checks.some((c) => !c);
+
+  const d = date ? startOfDay(date) : today();
+  const isPast = isPastDate(d);
+  const isToday = isTodayDate(d);
+  const isFuture = isFutureDate(d);
+
+  if (isFuture) {
+    hasIncomplete = false;
+  }
 
   return {
     hasWeight,
@@ -182,7 +228,20 @@ export function computeDayCompletion(
     allComplete,
     hasIncomplete,
     isNeutral: !hasAnyPlan && !hasWeight,
+    diet: toCategoryState(context.hasDietPlan, dietDone),
+    workout: toCategoryState(context.hasWorkoutPlan, workoutDone),
+    supplement: toCategoryState(context.suppCount > 0, supplementsDone),
+    cycle: toCategoryState(context.cycleCount > 0, cycleDone),
+    bloodwork: toCategoryState(context.bloodCount > 0, bloodworkDone),
+    hasAnyPlan,
+    isPast,
+    isToday,
+    isFuture,
   };
+}
+
+function buildPlansById(plans: PlanForDate[]): Map<string, PlanForDate> {
+  return new Map(plans.filter((p) => p.id).map((p) => [p.id!, p]));
 }
 
 async function fetchActivePlans(type?: PlanType) {
@@ -198,6 +257,10 @@ async function fetchActivePlans(type?: PlanType) {
     select: TASK_PLAN_SELECT,
     orderBy: { name: "asc" },
   });
+}
+
+async function fetchAllPlansForTaskFilter() {
+  return prisma.plan.findMany({ select: TASK_PLAN_SELECT });
 }
 
 export async function getApplicablePlans(date: Date, type?: PlanType) {
@@ -216,11 +279,14 @@ async function upsertDayTasksForDate(
   const applicable = plans.filter((p) => isPlanActiveForDate(p, d));
 
   if (applicable.length === 0) {
-    return prisma.dayTask.findMany({
+    const allTasks = await prisma.dayTask.findMany({
       where: { date: d },
       include: { plan: { select: { id: true, name: true, abbreviation: true, content: true } } },
       orderBy: { title: "asc" },
     });
+    const allPlans = await fetchAllPlansForTaskFilter();
+    const plansById = buildPlansById(allPlans);
+    return getActiveTasksForDate(d, allTasks, plansById);
   }
 
   const existing = await prisma.dayTask.findMany({
@@ -252,16 +318,46 @@ async function upsertDayTasksForDate(
     );
   }
 
-  return prisma.dayTask.findMany({
+  const allTasks = await prisma.dayTask.findMany({
     where: { date: d },
     include: { plan: { select: { id: true, name: true, abbreviation: true, content: true } } },
     orderBy: { title: "asc" },
   });
+  const allPlans = await fetchAllPlansForTaskFilter();
+  const plansById = buildPlansById(allPlans);
+  return getActiveTasksForDate(d, allTasks, plansById);
 }
 
 export async function syncDayTasks(date: Date) {
   const plans = await fetchActivePlans();
   return upsertDayTasksForDate(date, plans);
+}
+
+export async function cleanupInvalidFutureDayTasks() {
+  const now = today();
+  const futureTasks = await prisma.dayTask.findMany({
+    where: { date: { gt: now } },
+    select: { id: true, planId: true, date: true },
+  });
+
+  if (futureTasks.length === 0) return { deleted: 0 };
+
+  const plans = await fetchAllPlansForTaskFilter();
+  const plansById = buildPlansById(plans);
+
+  const toDelete = futureTasks.filter((task) => {
+    const plan = plansById.get(task.planId);
+    if (!plan) return true;
+    return !isPlanActiveForDate(plan, task.date);
+  });
+
+  if (toDelete.length > 0) {
+    await prisma.dayTask.deleteMany({
+      where: { id: { in: toDelete.map((t) => t.id) } },
+    });
+  }
+
+  return { deleted: toDelete.length };
 }
 
 export async function syncMonthDayTasks(year: number, month: number) {
@@ -329,6 +425,8 @@ export async function syncMonthDayTasks(year: number, month: number) {
       })
     );
   }
+
+  await cleanupInvalidFutureDayTasks();
 }
 
 export async function getOrCreateDayLog(date: Date) {
@@ -349,104 +447,121 @@ export async function getOrCreateDayLog(date: Date) {
 
 export async function updateAggregateFlags(date: Date) {
   const d = startOfDay(date);
-  const tasks = await prisma.dayTask.findMany({ where: { date: d } });
+  const [allTasks, allPlans, activePlans, workoutTemplate] = await Promise.all([
+    prisma.dayTask.findMany({ where: { date: d } }),
+    fetchAllPlansForTaskFilter(),
+    prisma.plan.findMany({ where: { active: true }, select: TASK_PLAN_SELECT }),
+    prisma.workoutTemplate.findFirst({
+      where: { weekday: getWeekdayNumber(d), active: true },
+      select: { id: true },
+    }),
+  ]);
 
-  const allOfType = (type: string) => {
-    const filtered = tasks.filter((t) => t.type === type);
-    return filtered.length === 0 ? null : filtered.every((t) => t.completed);
-  };
+  const plansById = buildPlansById(allPlans);
+  const activeTasks = getActiveTasksForDate(d, allTasks, plansById);
+  const context = getDayPlanContext(d, activePlans, !!workoutTemplate);
 
-  const supplementsDone = allOfType(PLAN_TYPES.SUPPLEMENT);
-  const cycleDone = allOfType(PLAN_TYPES.CYCLE);
-  const bloodTasks = tasks.filter((t) => t.type === PLAN_TYPES.BLOODWORK);
-  const bloodworkPlanned = bloodTasks.length > 0;
+  const suppTasks = activeTasks.filter((t) => t.type === PLAN_TYPES.SUPPLEMENT);
+  const cycleTasks = activeTasks.filter((t) => t.type === PLAN_TYPES.CYCLE);
+  const bloodTasks = activeTasks.filter((t) => t.type === PLAN_TYPES.BLOODWORK);
+
+  const supplementsDone =
+    context.suppCount > 0 ? categoryTasksComplete(context.suppCount, suppTasks) : false;
+  const cycleDone =
+    context.cycleCount > 0 ? categoryTasksComplete(context.cycleCount, cycleTasks) : false;
+  const bloodworkPlanned = context.bloodCount > 0;
   const bloodworkDone =
-    bloodTasks.length === 0 ? null : bloodTasks.every((t) => t.completed);
+    context.bloodCount > 0
+      ? categoryTasksComplete(context.bloodCount, bloodTasks)
+      : false;
 
   await prisma.dayLog.upsert({
     where: { date: d },
     create: {
       date: d,
-      supplementsDone: supplementsDone ?? false,
-      cycleDone: cycleDone ?? false,
-      bloodworkPlanned: bloodworkPlanned,
-      bloodworkDone: bloodworkDone ?? false,
+      supplementsDone,
+      cycleDone,
+      bloodworkPlanned,
+      bloodworkDone,
     },
     update: {
-      ...(supplementsDone !== null && { supplementsDone }),
-      ...(cycleDone !== null && { cycleDone }),
+      supplementsDone,
+      cycleDone,
       bloodworkPlanned,
-      ...(bloodworkDone !== null && { bloodworkDone }),
+      bloodworkDone,
     },
   });
+}
+
+export async function recalculateAllDayLogAggregateFlags() {
+  const logs = await prisma.dayLog.findMany({ select: { date: true } });
+  for (const log of logs) {
+    await updateAggregateFlags(log.date);
+  }
 }
 
 export async function getDayStatus(date: Date): Promise<DayStatus> {
   const d = startOfDay(date);
   const weekday = getWeekdayNumber(d);
 
-  const [log, tasks, session, allPlans, workoutTemplate] = await Promise.all([
-    prisma.dayLog.findUnique({ where: { date: d } }),
-    prisma.dayTask.findMany({ where: { date: d } }),
-    prisma.workoutSession.findFirst({
-      where: { date: d, completed: true },
-      select: { id: true },
-    }),
-    prisma.plan.findMany({
-      where: { active: true },
-      select: TASK_PLAN_SELECT,
-    }),
-    prisma.workoutTemplate.findFirst({
-      where: { weekday, active: true },
-      select: { id: true },
-    }),
-  ]);
+  const [log, tasks, session, activePlans, allPlans, workoutTemplate] =
+    await Promise.all([
+      prisma.dayLog.findUnique({ where: { date: d } }),
+      prisma.dayTask.findMany({ where: { date: d } }),
+      prisma.workoutSession.findFirst({
+        where: { date: d, completed: true },
+        select: { id: true },
+      }),
+      prisma.plan.findMany({ where: { active: true }, select: TASK_PLAN_SELECT }),
+      fetchAllPlansForTaskFilter(),
+      prisma.workoutTemplate.findFirst({
+        where: { weekday, active: true },
+        select: { id: true },
+      }),
+    ]);
 
-  const context = getDayPlanContext(d, allPlans, !!workoutTemplate);
-  return computeDayCompletion(log, tasks, context, !!session);
+  const plansById = buildPlansById(allPlans);
+  const activeTasks = getActiveTasksForDate(d, tasks, plansById);
+  const context = getDayPlanContext(d, activePlans, !!workoutTemplate);
+  return computeDayCompletion(log, activeTasks, context, !!session, d);
 }
 
 export async function getMonthDayStatuses(year: number, month: number) {
   const start = startOfDay(new Date(year, month - 1, 1));
   const end = startOfDay(new Date(year, month, 0));
 
-  const [logs, tasks, sessions, allPlans, workoutTemplates] = await Promise.all([
-    prisma.dayLog.findMany({ where: { date: { gte: start, lte: end } } }),
-    prisma.dayTask.findMany({ where: { date: { gte: start, lte: end } } }),
-    prisma.workoutSession.findMany({
-      where: { date: { gte: start, lte: end }, completed: true },
-      select: { date: true },
-    }),
-    prisma.plan.findMany({
-      where: { active: true },
-      select: TASK_PLAN_SELECT,
-    }),
-    prisma.workoutTemplate.findMany({
-      where: { active: true },
-      select: { weekday: true },
-    }),
-  ]);
+  const [logs, tasks, sessions, activePlans, allPlans, workoutTemplates] =
+    await Promise.all([
+      prisma.dayLog.findMany({ where: { date: { gte: start, lte: end } } }),
+      prisma.dayTask.findMany({ where: { date: { gte: start, lte: end } } }),
+      prisma.workoutSession.findMany({
+        where: { date: { gte: start, lte: end }, completed: true },
+        select: { date: true },
+      }),
+      prisma.plan.findMany({ where: { active: true }, select: TASK_PLAN_SELECT }),
+      fetchAllPlansForTaskFilter(),
+      prisma.workoutTemplate.findMany({
+        where: { active: true },
+        select: { weekday: true },
+      }),
+    ]);
 
+  const plansById = buildPlansById(allPlans);
   const workoutWeekdays = new Set(workoutTemplates.map((t) => t.weekday));
   const statusMap = new Map<string, DayStatus>();
   const daysInMonth = end.getDate();
-  const todayDate = today();
 
   for (let day = 1; day <= daysInMonth; day++) {
     const d = startOfDay(new Date(year, month - 1, day));
     const key = toDateInputValue(d);
     const log = logs.find((l) => toDateInputValue(l.date) === key) ?? null;
-    const dayTasks = tasks.filter((t) => toDateInputValue(t.date) === key);
+    const dayTasksRaw = tasks.filter((t) => toDateInputValue(t.date) === key);
+    const activeTasks = getActiveTasksForDate(d, dayTasksRaw, plansById);
     const session = sessions.some((s) => toDateInputValue(s.date) === key);
     const wd = getWeekdayNumber(d);
 
-    const context = getDayPlanContext(d, allPlans, workoutWeekdays.has(wd));
-    const status = computeDayCompletion(log, dayTasks, context, session);
-
-    if (d > todayDate) {
-      status.hasIncomplete = false;
-    }
-
+    const context = getDayPlanContext(d, activePlans, workoutWeekdays.has(wd));
+    const status = computeDayCompletion(log, activeTasks, context, session, d);
     statusMap.set(key, status);
   }
 

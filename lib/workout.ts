@@ -1,6 +1,8 @@
 import { prisma } from "./db";
 import { getWeekdayNumber, startOfDay } from "./date";
-import { inferGroupFromName } from "./workout-groups";
+import { inferGroupFromName, type WorkoutGroup } from "./workout-groups";
+import { TRAINING_2026_PROGRAM } from "./seed-workout-program";
+import { deactivateOtherTemplatesOnWeekday } from "./normalize-workout-templates";
 
 export function calcSessionVolume(
   setLogs: { weight: number | null; reps: number | null }[]
@@ -8,11 +10,66 @@ export function calcSessionVolume(
   return setLogs.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 }
 
+export type CompletedSessionRow = {
+  id: string;
+  date: Date;
+  title: string;
+  workoutGroup: string | null;
+  totalVolume: number;
+  completed: boolean;
+};
+
+export function resolveSessionGroup(
+  session: { workoutGroup: string | null; title: string }
+): WorkoutGroup {
+  return (session.workoutGroup as WorkoutGroup) ?? inferGroupFromName(session.title);
+}
+
+export function getSessionVolume(session: {
+  totalVolume: number | null;
+  setLogs?: { weight: number | null; reps: number | null; completed?: boolean }[];
+}): number {
+  if (session.totalVolume != null && session.totalVolume > 0) {
+    return session.totalVolume;
+  }
+  const logs = session.setLogs?.filter((s) => s.completed !== false) ?? [];
+  return calcSessionVolume(logs);
+}
+
+export function getSameTypeVolumeDelta(
+  sessions: CompletedSessionRow[],
+  current: CompletedSessionRow
+): { prevVolume: number | null; delta: number | null } {
+  const group = resolveSessionGroup(current);
+  const prev = sessions
+    .filter(
+      (s) =>
+        s.id !== current.id &&
+        s.completed &&
+        s.date.getTime() < current.date.getTime() &&
+        resolveSessionGroup(s) === group
+    )
+    .sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+
+  if (!prev) return { prevVolume: null, delta: null };
+  const prevVolume = prev.totalVolume;
+  return { prevVolume, delta: current.totalVolume - prevVolume };
+}
+
 export async function getTodayTemplate(date: Date = new Date()) {
   const weekday = getWeekdayNumber(startOfDay(date));
+
+  const preferred = await prisma.workoutTemplate.findFirst({
+    where: { weekday, active: true, programName: TRAINING_2026_PROGRAM },
+    include: { exercises: { orderBy: { order: "asc" } } },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (preferred) return preferred;
+
   return prisma.workoutTemplate.findFirst({
     where: { weekday, active: true },
     include: { exercises: { orderBy: { order: "asc" } } },
+    orderBy: { updatedAt: "desc" },
   });
 }
 
@@ -171,4 +228,151 @@ export async function getAllTemplates() {
     include: { exercises: { orderBy: { order: "asc" } } },
     orderBy: { weekday: "asc" },
   });
+}
+
+export async function getActiveProgramTemplates() {
+  return prisma.workoutTemplate.findMany({
+    where: { active: true, programName: TRAINING_2026_PROGRAM },
+    include: { exercises: { orderBy: { order: "asc" } } },
+    orderBy: { weekday: "asc" },
+  });
+}
+
+export async function getInactiveTemplates() {
+  return prisma.workoutTemplate.findMany({
+    where: { active: false },
+    include: { exercises: { orderBy: { order: "asc" } } },
+    orderBy: [{ weekday: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function getCompletedSessionHistory(limit = 20) {
+  const sessions = await prisma.workoutSession.findMany({
+    where: { completed: true },
+    include: {
+      setLogs: { where: { completed: true }, select: { weight: true, reps: true } },
+    },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+
+  const rows: CompletedSessionRow[] = sessions.map((s) => ({
+    id: s.id,
+    date: s.date,
+    title: s.title,
+    workoutGroup: s.workoutGroup,
+    totalVolume: getSessionVolume(s),
+    completed: s.completed,
+  }));
+
+  const allForDelta = await prisma.workoutSession.findMany({
+    where: { completed: true },
+    select: {
+      id: true,
+      date: true,
+      title: true,
+      workoutGroup: true,
+      totalVolume: true,
+      completed: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const allRows: CompletedSessionRow[] = allForDelta.map((s) => ({
+    id: s.id,
+    date: s.date,
+    title: s.title,
+    workoutGroup: s.workoutGroup,
+    totalVolume: s.totalVolume ?? 0,
+    completed: s.completed,
+  }));
+
+  return rows.map((row) => {
+    const { prevVolume, delta } = getSameTypeVolumeDelta(allRows, row);
+    return { ...row, prevVolume, volumeDelta: delta };
+  });
+}
+
+export async function getWorkoutSessionDetail(sessionId: string) {
+  const session = await prisma.workoutSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      setLogs: {
+        where: { completed: true },
+        orderBy: [{ exerciseName: "asc" }, { setNumber: "asc" }],
+      },
+    },
+  });
+  if (!session) return null;
+
+  const totalVolume = getSessionVolume(session);
+
+  const allCompleted = await prisma.workoutSession.findMany({
+    where: { completed: true },
+    select: {
+      id: true,
+      date: true,
+      title: true,
+      workoutGroup: true,
+      totalVolume: true,
+      completed: true,
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const row: CompletedSessionRow = {
+    id: session.id,
+    date: session.date,
+    title: session.title,
+    workoutGroup: session.workoutGroup,
+    totalVolume,
+    completed: session.completed,
+  };
+
+  const allRows: CompletedSessionRow[] = allCompleted.map((s) => ({
+    id: s.id,
+    date: s.date,
+    title: s.title,
+    workoutGroup: s.workoutGroup,
+    totalVolume: s.totalVolume ?? 0,
+    completed: s.completed,
+  }));
+
+  const { prevVolume, delta } = getSameTypeVolumeDelta(allRows, row);
+
+  const exerciseMap = new Map<
+    string,
+    { setNumber: number; weight: number | null; reps: number | null; volume: number }[]
+  >();
+
+  for (const log of session.setLogs) {
+    if (!exerciseMap.has(log.exerciseName)) {
+      exerciseMap.set(log.exerciseName, []);
+    }
+    const vol = (log.weight ?? 0) * (log.reps ?? 0);
+    exerciseMap.get(log.exerciseName)!.push({
+      setNumber: log.setNumber,
+      weight: log.weight,
+      reps: log.reps,
+      volume: vol,
+    });
+  }
+
+  const exercises = Array.from(exerciseMap.entries()).map(([name, sets]) => ({
+    name,
+    sets,
+    totalVolume: sets.reduce((sum, s) => sum + s.volume, 0),
+  }));
+
+  return {
+    session,
+    totalVolume,
+    prevVolume,
+    volumeDelta: delta,
+    exercises,
+  };
+}
+
+export async function deactivateOthersOnWeekday(weekday: number, keepId: string) {
+  await deactivateOtherTemplatesOnWeekday(prisma, weekday, keepId);
 }

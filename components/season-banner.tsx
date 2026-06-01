@@ -20,9 +20,9 @@ export function SeasonBanner({ season }: SeasonBannerProps) {
           <p className="text-sm text-muted-foreground">
             Aktif süreç yok. Takibi düzenli yapmak için bir süreç başlat.
           </p>
-          <Link href="/seasons" className="mt-2 inline-block">
+          <Link href="/season" className="mt-2 inline-block">
             <Button size="sm" variant="outline">
-              Süreç Başlat
+              Süreç Ayarları
             </Button>
           </Link>
         </CardContent>
@@ -51,7 +51,7 @@ export function SeasonBanner({ season }: SeasonBannerProps) {
             )}
           </div>
         </div>
-        <Link href={`/seasons/${season.id}`}>
+        <Link href="/season">
           <Button size="sm" variant="outline" className="shrink-0">
             Süreç
             <ChevronRight className="h-4 w-4 ml-1" />

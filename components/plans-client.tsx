@@ -125,6 +125,26 @@ export function PlansClient({ plans, activeTab }: PlansClientProps) {
                   <Textarea name="content" rows={4} />
                 </div>
               )}
+              {activeTab === PLAN_TYPES.DIET && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label>Hedef kalori</Label>
+                    <Input name="targetCalories" type="number" placeholder="2200" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Hedef protein (g)</Label>
+                    <Input name="targetProtein" type="number" placeholder="180" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Hedef karb (g)</Label>
+                    <Input name="targetCarbs" type="number" placeholder="200" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Hedef yağ (g)</Label>
+                    <Input name="targetFat" type="number" placeholder="60" />
+                  </div>
+                </div>
+              )}
               {activeTab === PLAN_TYPES.CYCLE && (
                 <label className="flex items-center gap-2 min-h-[44px]">
                   <input type="checkbox" name="doctorSupervised" className="h-4 w-4" />

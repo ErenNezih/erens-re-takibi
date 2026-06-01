@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parseDateInput } from "@/lib/date";
+import { cleanupInvalidFutureDayTasks } from "@/lib/tasks";
+
+function parseIntOrNull(v: FormDataEntryValue | null): number | null {
+  if (!v || v === "") return null;
+  const n = parseInt(v as string, 10);
+  return isNaN(n) ? null : n;
+}
 
 export async function createPlan(formData: FormData) {
   const weekdays = formData.getAll("weekdays").map(String).join(",") || "1,2,3,4,5,6,7";
@@ -18,6 +25,10 @@ export async function createPlan(formData: FormData) {
         : null,
       weekdays,
       content: (formData.get("content") as string) || null,
+      targetCalories: parseIntOrNull(formData.get("targetCalories")),
+      targetProtein: parseIntOrNull(formData.get("targetProtein")),
+      targetCarbs: parseIntOrNull(formData.get("targetCarbs")),
+      targetFat: parseIntOrNull(formData.get("targetFat")),
       active: formData.get("active") !== "off",
       doctorSupervised:
         formData.get("doctorSupervised") === "on" ||
@@ -29,6 +40,7 @@ export async function createPlan(formData: FormData) {
   revalidatePath("/plans");
   revalidatePath("/calendar");
   revalidatePath("/today");
+  await cleanupInvalidFutureDayTasks();
   return { success: true };
 }
 
@@ -47,6 +59,10 @@ export async function updatePlan(id: string, formData: FormData) {
         : null,
       weekdays,
       content: (formData.get("content") as string) || null,
+      targetCalories: parseIntOrNull(formData.get("targetCalories")),
+      targetProtein: parseIntOrNull(formData.get("targetProtein")),
+      targetCarbs: parseIntOrNull(formData.get("targetCarbs")),
+      targetFat: parseIntOrNull(formData.get("targetFat")),
       active: formData.get("active") !== "off",
       doctorSupervised:
         formData.get("doctorSupervised") === "on" ||
@@ -57,6 +73,7 @@ export async function updatePlan(id: string, formData: FormData) {
 
   revalidatePath("/plans");
   revalidatePath("/calendar");
+  await cleanupInvalidFutureDayTasks();
   return { success: true };
 }
 
@@ -64,6 +81,7 @@ export async function deletePlan(id: string) {
   await prisma.plan.delete({ where: { id } });
   revalidatePath("/plans");
   revalidatePath("/calendar");
+  await cleanupInvalidFutureDayTasks();
   return { success: true };
 }
 
@@ -78,5 +96,6 @@ export async function togglePlanActive(id: string, active: boolean) {
   await prisma.plan.update({ where: { id }, data: { active } });
   revalidatePath("/plans");
   revalidatePath("/calendar");
+  await cleanupInvalidFutureDayTasks();
   return { success: true };
 }

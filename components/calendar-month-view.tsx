@@ -81,6 +81,15 @@ export function CalendarMonthView({ year, month, statusMap }: CalendarMonthViewP
             allComplete: false,
             hasIncomplete: false,
             isNeutral: true,
+            diet: "not_planned",
+            workout: "not_planned",
+            supplement: "not_planned",
+            cycle: "not_planned",
+            bloodwork: "not_planned",
+            hasAnyPlan: false,
+            isPast: isPastDate(day),
+            isToday: isSameDay(day, todayDate),
+            isFuture: isFutureDate(day),
           };
           const isToday = isSameDay(day, todayDate);
           const isPast = isPastDate(day);

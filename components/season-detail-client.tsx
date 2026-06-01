@@ -33,7 +33,7 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 }
 
 export function SeasonDetailClient({ report }: SeasonDetailClientProps) {
-  const { season, compliance, weight, workout, groupSummaries, topExercises, dailyLogs } =
+  const { season, compliance, weight, workout, macro, groupSummaries, topExercises, dailyLogs } =
     report;
 
   return (
@@ -117,6 +117,23 @@ export function SeasonDetailClient({ report }: SeasonDetailClientProps) {
             label="Kür uyum"
             value={`${compliance.cycleCompletedDays} gün (${compliance.cycleCompliancePct}%)`}
           />
+          {macro.daysLogged > 0 && (
+            <>
+              <Metric label="Kalori girilen gün" value={macro.daysLogged} />
+              {macro.avgCalories != null && (
+                <Metric label="Ort. kalori" value={macro.avgCalories} />
+              )}
+              {macro.avgProtein != null && (
+                <Metric label="Ort. protein (g)" value={macro.avgProtein} />
+              )}
+              {macro.targetCalories != null && (
+                <Metric label="Hedef kalori" value={macro.targetCalories} />
+              )}
+              {macro.targetCalories != null && (
+                <Metric label="Kalori uyum" value={`${macro.macroCompliancePct}%`} />
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -185,7 +202,7 @@ export function SeasonDetailClient({ report }: SeasonDetailClientProps) {
           <Metric label="En iyi volume" value={Math.round(workout.bestWorkoutVolume)} />
           <Metric label="Son volume" value={Math.round(workout.lastVolume)} />
           <Metric
-            label="Öncekine göre"
+            label="Önceki aynı tipe göre"
             value={`${workout.volumeDelta >= 0 ? "+" : ""}${Math.round(workout.volumeDelta)}`}
           />
           <Metric label="Push volume" value={Math.round(workout.pushVolume)} />
@@ -213,6 +230,10 @@ export function SeasonDetailClient({ report }: SeasonDetailClientProps) {
                   <span>Ort: {Math.round(g.avgVolume)}</span>
                   <span>Son: {Math.round(g.lastVolume)}</span>
                   <span>En iyi: {Math.round(g.bestVolume)}</span>
+                  <span>
+                    Fark: {g.volumeDelta >= 0 ? "+" : ""}
+                    {Math.round(g.volumeDelta)}
+                  </span>
                 </div>
               </div>
             ))}

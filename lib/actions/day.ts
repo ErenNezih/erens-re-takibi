@@ -2,12 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { parseDateInput } from "@/lib/date";
+import { parseDateInput, toDateInputValue } from "@/lib/date";
 import {
   getOrCreateDayLog,
   syncDayTasks,
   updateAggregateFlags,
   getApplicablePlans,
+  getActiveTasksForDate,
+  getDayPlanContext,
+  computeDayCompletion,
   PLAN_TYPES,
 } from "@/lib/tasks";
 import { getTodayTemplate } from "@/lib/workout";
@@ -18,11 +21,6 @@ export async function saveDayLog(formData: FormData) {
   const data = {
     weight: parseFloatOrNull(formData.get("weight")),
     dietDone: formData.get("dietDone") === "on" || formData.get("dietDone") === "true",
-    supplementsDone:
-      formData.get("supplementsDone") === "on" ||
-      formData.get("supplementsDone") === "true",
-    cycleDone:
-      formData.get("cycleDone") === "on" || formData.get("cycleDone") === "true",
     bloodworkPlanned:
       formData.get("bloodworkPlanned") === "on" ||
       formData.get("bloodworkPlanned") === "true",
@@ -32,6 +30,10 @@ export async function saveDayLog(formData: FormData) {
     dietText: (formData.get("dietText") as string) || null,
     bloodworkNote: (formData.get("bloodworkNote") as string) || null,
     note: (formData.get("note") as string) || null,
+    calories: parseIntOrNull(formData.get("calories")),
+    protein: parseIntOrNull(formData.get("protein")),
+    carbs: parseIntOrNull(formData.get("carbs")),
+    fat: parseIntOrNull(formData.get("fat")),
   };
 
   await prisma.dayLog.upsert({
@@ -61,18 +63,23 @@ export async function toggleDayTask(taskId: string, completed: boolean) {
 
 export async function getDayData(dateStr: string) {
   const date = parseDateInput(dateStr);
-  await syncDayTasks(date);
+  const tasks = await syncDayTasks(date);
 
-  const [log, dietPlans, tasks, workoutTemplate, completedSession] =
+  const [log, dietPlans, allPlans, workoutTemplate, completedSession] =
     await Promise.all([
       getOrCreateDayLog(date),
       getApplicablePlans(date, PLAN_TYPES.DIET),
-      prisma.dayTask.findMany({
-        where: { date },
-        include: {
-          plan: { select: { id: true, name: true, abbreviation: true, content: true } },
+      prisma.plan.findMany({
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          startDate: true,
+          endDate: true,
+          weekdays: true,
+          active: true,
+          repeatType: true,
         },
-        orderBy: { title: "asc" },
       }),
       getTodayTemplate(date),
       prisma.workoutSession.findFirst({
@@ -81,15 +88,28 @@ export async function getDayData(dateStr: string) {
       }),
     ]);
 
+  const plansById = new Map(allPlans.map((p) => [p.id, p]));
+  const activeTasks = getActiveTasksForDate(date, tasks, plansById);
+  const activePlans = allPlans.filter((p) => p.active);
+  const context = getDayPlanContext(date, activePlans, !!workoutTemplate);
+  const status = computeDayCompletion(
+    log,
+    activeTasks,
+    context,
+    !!completedSession,
+    date
+  );
+
   const dietPlan = dietPlans[0];
 
   return {
     log,
-    tasks,
+    tasks: activeTasks,
     dietPlan,
     workoutTemplate,
     workoutCompleted: !!completedSession,
     completedSessionTitle: completedSession?.title ?? null,
+    status,
     date: dateStr,
   };
 }
@@ -100,6 +120,12 @@ function parseFloatOrNull(v: FormDataEntryValue | null): number | null {
   return isNaN(n) ? null : n;
 }
 
+function parseIntOrNull(v: FormDataEntryValue | null): number | null {
+  if (!v || v === "") return null;
+  const n = parseInt(v as string, 10);
+  return isNaN(n) ? null : n;
+}
+
 function toDateKey(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return toDateInputValue(date);
 }

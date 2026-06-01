@@ -8,16 +8,22 @@ import {
   completeWorkoutSession,
   getTodayTemplate,
   getActiveSession,
+  getCompletedSessionHistory,
+  deactivateOthersOnWeekday,
 } from "@/lib/workout";
 
 export async function createWorkoutTemplate(formData: FormData) {
+  const weekday = parseInt(formData.get("weekday") as string, 10);
   const template = await prisma.workoutTemplate.create({
     data: {
       name: formData.get("name") as string,
-      weekday: parseInt(formData.get("weekday") as string, 10),
+      weekday,
       active: formData.get("active") !== "off",
     },
   });
+  if (template.active) {
+    await deactivateOthersOnWeekday(weekday, template.id);
+  }
   revalidatePath("/plans");
   revalidatePath("/workout");
   return { success: true, id: template.id };
@@ -111,6 +117,7 @@ export async function finishWorkout(sessionId: string) {
   revalidatePath("/workout/start");
   revalidatePath("/today");
   revalidatePath("/calendar");
+  revalidatePath("/seasons");
   if (session) {
     revalidatePath(`/day/${session.date.toISOString().split("T")[0]}`);
   }
@@ -119,13 +126,10 @@ export async function finishWorkout(sessionId: string) {
 
 export async function getWorkoutPageData(dateStr?: string) {
   const date = dateStr ? parseDateInput(dateStr) : startOfDay(new Date());
-  const [template, activeSession, templates] = await Promise.all([
+  const [template, activeSession, sessionHistory] = await Promise.all([
     getTodayTemplate(date),
     getActiveSession(date),
-    prisma.workoutTemplate.findMany({
-      include: { exercises: { orderBy: { order: "asc" } } },
-      orderBy: { weekday: "asc" },
-    }),
+    getCompletedSessionHistory(20),
   ]);
-  return { template, activeSession, templates, date: dateStr };
+  return { template, activeSession, sessionHistory, date: dateStr };
 }

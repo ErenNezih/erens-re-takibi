@@ -4,9 +4,10 @@ import {
   computeDayCompletion,
   getDayPlanContext,
   getEffectiveWeight,
+  getActiveTasksForDate,
   PLAN_TYPES,
 } from "./tasks";
-import { calcSessionVolume } from "./workout";
+import { calcSessionVolume, getSameTypeVolumeDelta, type CompletedSessionRow } from "./workout";
 import { inferGroupFromName, WORKOUT_GROUPS, type WorkoutGroup } from "./workout-groups";
 import type { Season } from "@prisma/client";
 
@@ -60,6 +61,8 @@ export interface GroupSummary {
   avgVolume: number;
   lastVolume: number;
   bestVolume: number;
+  prevVolume: number;
+  volumeDelta: number;
 }
 
 export type ProgressStatus = "Arttı" | "Sabit" | "Düştü";
@@ -83,12 +86,22 @@ export interface DailyLogRow {
   overallStatus: string;
 }
 
+export interface MacroReport {
+  avgCalories: number | null;
+  avgProtein: number | null;
+  targetCalories: number | null;
+  targetProtein: number | null;
+  daysLogged: number;
+  macroCompliancePct: number;
+}
+
 export interface SeasonReport {
   season: Season;
   evalEnd: Date;
   compliance: ComplianceReport;
   weight: WeightReport;
   workout: WorkoutReport;
+  macro: MacroReport;
   groupSummaries: GroupSummary[];
   topExercises: ExerciseProgressRow[];
   dailyLogs: DailyLogRow[];
@@ -171,9 +184,10 @@ function compareExerciseProgress(
 function computeComplianceForDays(
   days: Date[],
   logsByDate: Map<string, NonNullable<Awaited<ReturnType<typeof prisma.dayLog.findFirst>>>>,
-  tasksByDate: Map<string, { type: string; completed: boolean }[]>,
+  tasksByDate: Map<string, { planId: string; type: string; completed: boolean }[]>,
   sessionsByDate: Map<string, boolean>,
-  allPlans: Parameters<typeof getDayPlanContext>[1],
+  activePlans: Parameters<typeof getDayPlanContext>[1],
+  plansById: Map<string, Parameters<typeof getDayPlanContext>[1][0] & { id: string }>,
   workoutWeekdays: Set<number>
 ): ComplianceReport {
   let dietNum = 0,
@@ -193,15 +207,13 @@ function computeComplianceForDays(
     const key = toDateInputValue(d);
     const wd = getWeekdayNumber(d);
     const log = logsByDate.get(key) ?? null;
-    const tasks = tasksByDate.get(key) ?? [];
+    const rawTasks = tasksByDate.get(key) ?? [];
+    const tasks = getActiveTasksForDate(d, rawTasks, plansById);
     const sessionDone = sessionsByDate.get(key) ?? false;
-    const context = getDayPlanContext(d, allPlans, workoutWeekdays.has(wd));
-    const status = computeDayCompletion(log, tasks, context, sessionDone);
+    const context = getDayPlanContext(d, activePlans, workoutWeekdays.has(wd));
+    const status = computeDayCompletion(log, tasks, context, sessionDone, d);
 
     const hasWeight = getEffectiveWeight(log) !== null;
-    const suppTasks = tasks.filter((t) => t.type === PLAN_TYPES.SUPPLEMENT);
-    const cycleTasks = tasks.filter((t) => t.type === PLAN_TYPES.CYCLE);
-    const bloodTasks = tasks.filter((t) => t.type === PLAN_TYPES.BLOODWORK);
 
     const daySlots: boolean[] = [];
     const dayCompleted: boolean[] = [];
@@ -219,23 +231,20 @@ function computeComplianceForDays(
       if (status.workoutDone) workoutNum++;
     }
     if (context.suppCount > 0) {
-      const done = suppTasks.length > 0 && suppTasks.every((t) => t.completed);
       daySlots.push(true);
-      dayCompleted.push(done);
+      dayCompleted.push(status.supplementsDone);
       suppDen++;
-      if (done) suppNum++;
+      if (status.supplementsDone) suppNum++;
     }
     if (context.cycleCount > 0) {
-      const done = cycleTasks.length > 0 && cycleTasks.every((t) => t.completed);
       daySlots.push(true);
-      dayCompleted.push(done);
+      dayCompleted.push(status.cycleDone);
       cycleDen++;
-      if (done) cycleNum++;
+      if (status.cycleDone) cycleNum++;
     }
     if (context.bloodCount > 0) {
-      const done = bloodTasks.length > 0 && bloodTasks.every((t) => t.completed);
       daySlots.push(true);
-      dayCompleted.push(done);
+      dayCompleted.push(status.bloodworkDone);
     }
 
     totalSlots += daySlots.length;
@@ -266,34 +275,94 @@ function computeComplianceForDays(
   };
 }
 
-export async function getSeasonReport(seasonId: string): Promise<SeasonReport | null> {
-  const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) return null;
+function computeMacroReport(
+  logs: { calories: number | null; protein: number | null }[],
+  dietPlans: { targetCalories: number | null; targetProtein: number | null }[]
+): MacroReport {
+  const withCalories = logs.filter((l) => l.calories != null);
+  const withProtein = logs.filter((l) => l.protein != null);
+  const avgCalories =
+    withCalories.length > 0
+      ? Math.round(
+          withCalories.reduce((s, l) => s + (l.calories ?? 0), 0) / withCalories.length
+        )
+      : null;
+  const avgProtein =
+    withProtein.length > 0
+      ? Math.round(
+          withProtein.reduce((s, l) => s + (l.protein ?? 0), 0) / withProtein.length
+        )
+      : null;
 
+  const dietPlan = dietPlans.find((p) => p.targetCalories != null || p.targetProtein != null);
+  const targetCalories = dietPlan?.targetCalories ?? null;
+  const targetProtein = dietPlan?.targetProtein ?? null;
+
+  let macroHits = 0;
+  let macroDen = 0;
+  if (targetCalories != null) {
+    for (const l of withCalories) {
+      macroDen++;
+      const diff = Math.abs((l.calories ?? 0) - targetCalories) / targetCalories;
+      if (diff <= 0.1) macroHits++;
+    }
+  }
+
+  return {
+    avgCalories,
+    avgProtein,
+    targetCalories,
+    targetProtein,
+    daysLogged: withCalories.length,
+    macroCompliancePct: macroDen === 0 ? 0 : Math.round((macroHits / macroDen) * 100),
+  };
+}
+
+async function fetchSeasonCoreData(season: Season) {
   const start = startOfDay(season.startDate);
   const evalEnd = getEvalEnd(season);
   const days = eachDayInRange(start, evalEnd);
 
-  const [logs, tasks, sessions, allPlans, templates] = await Promise.all([
-    prisma.dayLog.findMany({
-      where: { date: { gte: start, lte: evalEnd } },
-    }),
-    prisma.dayTask.findMany({
-      where: { date: { gte: start, lte: evalEnd } },
-    }),
-    prisma.workoutSession.findMany({
-      where: { date: { gte: start, lte: evalEnd }, completed: true },
-      include: {
-        setLogs: { where: { completed: true } },
-      },
-      orderBy: { date: "asc" },
-    }),
-    prisma.plan.findMany({ where: { active: true } }),
-    prisma.workoutTemplate.findMany({ where: { active: true } }),
-  ]);
+  const [logs, tasks, sessions, activePlans, allPlansForFilter, templates, dietPlans] =
+    await Promise.all([
+      prisma.dayLog.findMany({
+        where: { date: { gte: start, lte: evalEnd } },
+      }),
+      prisma.dayTask.findMany({
+        where: { date: { gte: start, lte: evalEnd } },
+      }),
+      prisma.workoutSession.findMany({
+        where: { date: { gte: start, lte: evalEnd }, completed: true },
+        include: {
+          setLogs: { where: { completed: true } },
+        },
+        orderBy: { date: "asc" },
+      }),
+      prisma.plan.findMany({ where: { active: true } }),
+      prisma.plan.findMany({
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          weekdays: true,
+          active: true,
+          repeatType: true,
+          type: true,
+        },
+      }),
+      prisma.workoutTemplate.findMany({ where: { active: true } }),
+      prisma.plan.findMany({
+        where: { type: PLAN_TYPES.DIET, active: true },
+        select: { targetCalories: true, targetProtein: true },
+      }),
+    ]);
 
+  const plansById = new Map(allPlansForFilter.map((p) => [p.id, p]));
   const logsByDate = new Map(logs.map((l) => [toDateInputValue(l.date), l]));
-  const tasksByDate = new Map<string, { type: string; completed: boolean }[]>();
+  const tasksByDate = new Map<
+    string,
+    { planId: string; type: string; completed: boolean }[]
+  >();
   for (const t of tasks) {
     const key = toDateInputValue(t.date);
     if (!tasksByDate.has(key)) tasksByDate.set(key, []);
@@ -309,7 +378,8 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
     logsByDate,
     tasksByDate,
     sessionsByDate,
-    allPlans,
+    activePlans,
+    plansById,
     workoutWeekdays
   );
 
@@ -320,6 +390,51 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
 
   const firstWeight = weights[0]?.weight ?? season.startWeight ?? null;
   const lastWeight = weights[weights.length - 1]?.weight ?? season.endWeight ?? null;
+
+  const macro = computeMacroReport(logs, dietPlans);
+
+  return {
+    start,
+    evalEnd,
+    days,
+    logs,
+    sessions,
+    activePlans,
+    plansById,
+    logsByDate,
+    tasksByDate,
+    sessionsByDate,
+    workoutWeekdays,
+    compliance,
+    firstWeight,
+    lastWeight,
+    weights,
+    macro,
+  };
+}
+
+export async function getSeasonReport(seasonId: string): Promise<SeasonReport | null> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) return null;
+
+  const core = await fetchSeasonCoreData(season);
+  const {
+    evalEnd,
+    days,
+    logs,
+    sessions,
+    activePlans,
+    plansById,
+    logsByDate,
+    tasksByDate,
+    sessionsByDate,
+    workoutWeekdays,
+    compliance,
+    firstWeight,
+    lastWeight,
+    weights,
+    macro,
+  } = core;
   const weightValues = weights.map((w) => w.weight);
   const minWeight = weightValues.length ? Math.min(...weightValues) : null;
   const maxWeight = weightValues.length ? Math.max(...weightValues) : null;
@@ -366,11 +481,24 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
   }
 
   const last = volumes[volumes.length - 1];
-  const prev = volumes[volumes.length - 2];
   const best = volumes.reduce(
     (max, v) => (v.volume > max.volume ? v : max),
     volumes[0] ?? { volume: 0, dateKey: "", group: WORKOUT_GROUPS.OTHER }
   );
+
+  const sessionRows: CompletedSessionRow[] = sessions.map((s) => ({
+    id: s.id,
+    date: s.date,
+    title: s.title,
+    workoutGroup: s.workoutGroup,
+    totalVolume: s.totalVolume ?? calcSessionVolume(s.setLogs),
+    completed: true,
+  }));
+
+  const lastSession = sessionRows[sessionRows.length - 1];
+  const sameTypeDelta = lastSession
+    ? getSameTypeVolumeDelta(sessionRows, lastSession)
+    : { prevVolume: null, delta: null };
 
   const workoutReport: WorkoutReport = {
     totalWorkouts: sessions.length,
@@ -380,8 +508,8 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
     bestWorkoutVolume: best?.volume ?? 0,
     bestWorkoutDate: best?.dateKey ?? null,
     lastVolume: last?.volume ?? 0,
-    prevVolume: prev?.volume ?? 0,
-    volumeDelta: last && prev ? last.volume - prev.volume : 0,
+    prevVolume: sameTypeDelta.prevVolume ?? 0,
+    volumeDelta: sameTypeDelta.delta ?? 0,
     pushVolume: groupVolumes.PUSH,
     pullVolume: groupVolumes.PULL,
     legsVolume: groupVolumes.LEGS,
@@ -400,6 +528,14 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
     );
     const sets = groupSessions.reduce((sum, s) => sum + s.setLogs.length, 0);
     const totalVol = vols.reduce((a, b) => a + b, 0);
+    const groupRows = sessionRows.filter(
+      (r) =>
+        ((r.workoutGroup as WorkoutGroup) ?? inferGroupFromName(r.title)) === group
+    );
+    const lastGroupSession = groupRows[groupRows.length - 1];
+    const groupDelta = lastGroupSession
+      ? getSameTypeVolumeDelta(sessionRows, lastGroupSession)
+      : { prevVolume: null, delta: null };
     return {
       group,
       workoutCount: groupSessions.length,
@@ -408,6 +544,8 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
       avgVolume: groupSessions.length ? totalVol / groupSessions.length : 0,
       lastVolume: vols[vols.length - 1] ?? 0,
       bestVolume: vols.length ? Math.max(...vols) : 0,
+      prevVolume: groupDelta.prevVolume ?? 0,
+      volumeDelta: groupDelta.delta ?? 0,
     };
   });
 
@@ -469,30 +607,22 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
     const key = toDateInputValue(d);
     const wd = getWeekdayNumber(d);
     const log = logsByDate.get(key) ?? null;
-    const dayTasks = tasksByDate.get(key) ?? [];
+    const rawTasks = tasksByDate.get(key) ?? [];
+    const dayTasks = getActiveTasksForDate(d, rawTasks, plansById);
     const sessionDone = sessionsByDate.get(key) ?? false;
-    const context = getDayPlanContext(d, allPlans, workoutWeekdays.has(wd));
-    const status = computeDayCompletion(log, dayTasks, context, sessionDone);
+    const context = getDayPlanContext(d, activePlans, workoutWeekdays.has(wd));
+    const status = computeDayCompletion(log, dayTasks, context, sessionDone, d);
 
     const fmt = (planned: boolean, done: boolean) =>
       !planned ? "—" : done ? "Tamam" : "Eksik";
-
-    const suppTasks = dayTasks.filter((t) => t.type === PLAN_TYPES.SUPPLEMENT);
-    const cycleTasks = dayTasks.filter((t) => t.type === PLAN_TYPES.CYCLE);
 
     return {
       dateKey: key,
       weight: getEffectiveWeight(log),
       dietStatus: fmt(context.hasDietPlan, status.dietDone),
       workoutStatus: fmt(context.hasWorkoutPlan, status.workoutDone),
-      supplementStatus: fmt(
-        context.suppCount > 0,
-        suppTasks.length > 0 && suppTasks.every((t) => t.completed)
-      ),
-      cycleStatus: fmt(
-        context.cycleCount > 0,
-        cycleTasks.length > 0 && cycleTasks.every((t) => t.completed)
-      ),
+      supplementStatus: fmt(context.suppCount > 0, status.supplementsDone),
+      cycleStatus: fmt(context.cycleCount > 0, status.cycleDone),
       overallStatus: status.allComplete ? "Tamam" : status.isNeutral ? "—" : "Eksik",
     };
   });
@@ -503,10 +633,45 @@ export async function getSeasonReport(seasonId: string): Promise<SeasonReport | 
     compliance,
     weight: weightReport,
     workout: workoutReport,
+    macro,
     groupSummaries,
     topExercises,
     dailyLogs,
   };
+}
+
+export async function getSeasonListSummaryLight(
+  seasonId: string
+): Promise<SeasonListSummary | null> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) return null;
+
+  const core = await fetchSeasonCoreData(season);
+  const totalChange =
+    core.firstWeight != null && core.lastWeight != null
+      ? core.lastWeight - core.firstWeight
+      : null;
+
+  return {
+    id: season.id,
+    compliancePct: core.compliance.overallCompliancePct,
+    workoutCount: core.sessions.length,
+    weightChange: totalChange,
+    currentWeight: core.lastWeight,
+  };
+}
+
+export async function getSeasonListSummariesLight(
+  seasons: Season[]
+): Promise<Map<string, SeasonListSummary>> {
+  const map = new Map<string, SeasonListSummary>();
+  await Promise.all(
+    seasons.map(async (season) => {
+      const summary = await getSeasonListSummaryLight(season.id);
+      if (summary) map.set(season.id, summary);
+    })
+  );
+  return map;
 }
 
 export interface SeasonListSummary {

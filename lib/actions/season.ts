@@ -24,6 +24,7 @@ export async function startSeason(formData: FormData) {
   });
 
   revalidatePath("/calendar");
+  revalidatePath("/season");
   revalidatePath("/seasons");
   revalidatePath(`/seasons/${season.id}`);
   return { success: true };
@@ -46,6 +47,7 @@ export async function endSeason(formData: FormData) {
   });
 
   revalidatePath("/calendar");
+  revalidatePath("/season");
   revalidatePath("/seasons");
   revalidatePath(`/seasons/${active.id}`);
   return { success: true };

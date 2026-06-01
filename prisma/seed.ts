@@ -41,6 +41,10 @@ async function main() {
     console.log("Weight backfill skipped (column may not exist yet)");
   });
 
+  await prisma.$executeRaw`
+    UPDATE "WorkoutSession" SET "totalVolume" = 0 WHERE "totalVolume" IS NULL
+  `.catch(() => {});
+
   await seedTraining2026Program(prisma);
 
   const planCount = await prisma.plan.count();

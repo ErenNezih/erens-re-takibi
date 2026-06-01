@@ -1,172 +1,227 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/components/ui/use-toast";
-import { startSeason, endSeason } from "@/lib/actions/season";
 import {
   SEASON_TYPE_LABELS,
-  SEASON_TYPES,
   seasonDayCount,
   type SeasonType,
 } from "@/lib/season";
-import { formatDateShort, toDateInputValue, today } from "@/lib/date";
-import type { SeasonListSummary } from "@/lib/season-report";
+import { formatDateShort } from "@/lib/date";
+import type { SeasonListSummary, SeasonReport } from "@/lib/season-report";
 import type { Season } from "@prisma/client";
 
 interface SeasonsListClientProps {
   activeSeason: Season | null;
+  activeReport: SeasonReport | null;
   history: Season[];
   summaries: Map<string, SeasonListSummary>;
 }
 
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-semibold text-sm">{value}</p>
+    </div>
+  );
+}
+
 export function SeasonsListClient({
   activeSeason,
+  activeReport,
   history,
   summaries,
 }: SeasonsListClientProps) {
-  const [isPending, startTransition] = useTransition();
-  const router = useRouter();
-  const seasonTypes = Object.values(SEASON_TYPES);
-
-  const activeSummary = activeSeason ? summaries.get(activeSeason.id) : null;
+  const weight = activeReport?.weight;
+  const workout = activeReport?.workout;
+  const compliance = activeReport?.compliance;
+  const completedDays =
+    activeReport?.dailyLogs.filter((d) => d.overallStatus === "Tamam").length ?? 0;
 
   return (
     <div className="space-y-4 pb-6">
       <h1 className="text-2xl font-bold">Süreçlerim</h1>
 
-      {activeSeason ? (
-        <Card className="border-success/40">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-base">{activeSeason.name}</CardTitle>
-              <Badge className="bg-success/15 text-success border-success/30">Aktif</Badge>
-            </div>
+      {!activeSeason ? (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm text-muted-foreground">Aktif süreç yok.</p>
             <p className="text-xs text-muted-foreground">
-              {SEASON_TYPE_LABELS[activeSeason.type as SeasonType] ?? activeSeason.type}
+              Yeni süreç başlatmak için takvimdeki Süreç Ayarları bölümünü kullanın.
             </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Başlangıç</p>
-                <p>{formatDateShort(activeSeason.startDate)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Gün</p>
-                <p>{seasonDayCount(activeSeason)}</p>
-              </div>
-              {activeSeason.startWeight != null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Başlangıç kilo</p>
-                  <p>{activeSeason.startWeight} kg</p>
-                </div>
-              )}
-              {activeSummary?.currentWeight != null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Güncel kilo</p>
-                  <p>{activeSummary.currentWeight} kg</p>
-                </div>
-              )}
-              {activeSeason.targetWeight != null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Hedef kilo</p>
-                  <p>{activeSeason.targetWeight} kg</p>
-                </div>
-              )}
-              {activeSummary?.weightChange != null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Kilo değişimi</p>
-                  <p>
-                    {activeSummary.weightChange >= 0 ? "+" : ""}
-                    {activeSummary.weightChange.toFixed(1)} kg
-                  </p>
-                </div>
-              )}
-              {activeSummary?.currentWeight != null &&
-                activeSeason.targetWeight != null && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Hedefe kalan</p>
-                    <p>
-                      {(activeSummary.currentWeight - activeSeason.targetWeight).toFixed(1)} kg
-                    </p>
-                  </div>
-                )}
-              {activeSummary && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Uyum</p>
-                  <p>{activeSummary.compliancePct}%</p>
-                </div>
-              )}
-            </div>
-            {activeSeason.note && (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-2">
-                {activeSeason.note}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Link href={`/seasons/${activeSeason.id}`} className="flex-1">
-                <Button className="w-full h-11">Süreci Gör</Button>
-              </Link>
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                startTransition(async () => {
-                  await endSeason(new FormData(e.currentTarget));
-                  toast({ title: "Süreç bitirildi" });
-                  router.refresh();
-                });
-              }}
-              className="space-y-2 pt-2 border-t border-border"
-            >
-              <p className="text-sm font-medium">Süreci Bitir</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Bitiş tarihi</Label>
-                  <Input
-                    name="endDate"
-                    type="date"
-                    defaultValue={toDateInputValue(today())}
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Bitiş kilosu</Label>
-                  <Input
-                    name="endWeight"
-                    type="number"
-                    step="0.1"
-                    defaultValue={activeSummary?.currentWeight ?? ""}
-                  />
-                </div>
-              </div>
-              <Textarea name="note" rows={2} placeholder="Kapanış notu..." />
-              <Button
-                type="submit"
-                variant="destructive"
-                className="w-full h-10"
-                disabled={isPending}
-              >
-                Süreci Bitir
+            <Link href="/season">
+              <Button variant="outline" size="sm">
+                Süreç Ayarları
               </Button>
-            </form>
+            </Link>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Aktif süreç yok.</p>
-          </CardContent>
-        </Card>
+        <>
+          <Card className="border-success/40">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base">{activeSeason.name}</CardTitle>
+                <Badge className="bg-success/15 text-success border-success/30">Aktif</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {SEASON_TYPE_LABELS[activeSeason.type as SeasonType] ?? activeSeason.type}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Metric label="Başlangıç" value={formatDateShort(activeSeason.startDate)} />
+                <Metric label="Gün" value={seasonDayCount(activeSeason)} />
+                {activeSeason.startWeight != null && (
+                  <Metric label="Başlangıç kilo" value={`${activeSeason.startWeight} kg`} />
+                )}
+                {weight?.lastWeight != null && (
+                  <Metric label="Güncel kilo" value={`${weight.lastWeight} kg`} />
+                )}
+                {activeSeason.targetWeight != null && (
+                  <Metric label="Hedef kilo" value={`${activeSeason.targetWeight} kg`} />
+                )}
+                {weight?.totalChange != null && (
+                  <Metric
+                    label="Kilo değişimi"
+                    value={`${weight.totalChange >= 0 ? "+" : ""}${weight.totalChange.toFixed(1)} kg`}
+                  />
+                )}
+                {weight?.remainingToTarget != null && (
+                  <Metric
+                    label="Hedefe kalan"
+                    value={`${weight.remainingToTarget.toFixed(1)} kg`}
+                  />
+                )}
+                {compliance && (
+                  <Metric label="Genel uyum" value={`${compliance.overallCompliancePct}%`} />
+                )}
+              </div>
+              <Link href={`/seasons/${activeSeason.id}`}>
+                <Button className="w-full h-11">Detaylı Raporu Gör</Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {weight && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Kilo Trendi</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {weight.firstWeight != null && (
+                    <Metric label="Başlangıç kilo" value={`${weight.firstWeight} kg`} />
+                  )}
+                  {weight.lastWeight != null && (
+                    <Metric label="Son kayıt" value={`${weight.lastWeight} kg`} />
+                  )}
+                  {weight.totalChange != null && (
+                    <Metric
+                      label="Toplam değişim"
+                      value={`${weight.totalChange >= 0 ? "+" : ""}${weight.totalChange.toFixed(1)} kg`}
+                    />
+                  )}
+                  {weight.avgWeeklyChange != null && (
+                    <Metric
+                      label="Haftalık ort."
+                      value={`${weight.avgWeeklyChange >= 0 ? "+" : ""}${weight.avgWeeklyChange.toFixed(2)} kg`}
+                    />
+                  )}
+                </div>
+                {weight.chartData.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground font-medium">Son 7 kayıt</p>
+                    <div className="text-xs space-y-0.5">
+                      {weight.chartData.slice(-7).map((p) => (
+                        <div key={p.dateKey} className="flex justify-between">
+                          <span className="text-muted-foreground">{p.dateKey}</span>
+                          <span>{p.weight} kg</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="h-36">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={weight.chartData.slice(-14)}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                          <XAxis dataKey="dateKey" tick={{ fontSize: 9 }} />
+                          <YAxis domain={["auto", "auto"]} tick={{ fontSize: 9 }} width={32} />
+                          <Tooltip />
+                          <Line
+                            type="monotone"
+                            dataKey="weight"
+                            stroke="hsl(var(--primary))"
+                            dot={false}
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {workout && workout.totalWorkouts === 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Ağırlık / Volume</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Henüz tamamlanmış antrenman yok</p>
+              </CardContent>
+            </Card>
+          ) : workout ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Ağırlık / Volume</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                <Metric label="Toplam antrenman" value={workout.totalWorkouts} />
+                <Metric label="Son volume" value={Math.round(workout.lastVolume)} />
+                <Metric label="En iyi volume" value={Math.round(workout.bestWorkoutVolume)} />
+                <Metric
+                  label="Önceki aynı tipe göre"
+                  value={`${workout.volumeDelta >= 0 ? "+" : ""}${Math.round(workout.volumeDelta)}`}
+                />
+                <Metric label="Push" value={Math.round(workout.pushVolume)} />
+                <Metric label="Pull" value={Math.round(workout.pullVolume)} />
+                <Metric label="Legs" value={Math.round(workout.legsVolume)} />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {compliance && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Uyum</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                <Metric label="Genel uyum" value={`${compliance.overallCompliancePct}%`} />
+                <Metric label="Diyet" value={`${compliance.dietCompliancePct}%`} />
+                <Metric label="Antrenman" value={`${compliance.workoutCompliancePct}%`} />
+                <Metric label="Supplement" value={`${compliance.supplementCompliancePct}%`} />
+                <Metric label="Kür" value={`${compliance.cycleCompliancePct}%`} />
+                <Metric label="Tamamlanan gün" value={completedDays} />
+                <Metric label="Pas geçilen gün" value={compliance.skippedDays} />
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       <div>
@@ -177,6 +232,10 @@ export function SeasonsListClient({
           <div className="space-y-2">
             {history.map((s) => {
               const summary = summaries.get(s.id);
+              const weightChange =
+                s.startWeight != null && s.endWeight != null
+                  ? s.endWeight - s.startWeight
+                  : summary?.weightChange ?? null;
               return (
                 <Link key={s.id} href={`/seasons/${s.id}`}>
                   <Card className="hover:bg-accent/30 transition-colors">
@@ -191,15 +250,14 @@ export function SeasonsListClient({
                           {s.endDate ? ` — ${formatDateShort(s.endDate)}` : ""}
                         </p>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
-                          {s.startWeight != null && s.endWeight != null && (
-                            <span>
-                              {s.startWeight} → {s.endWeight} kg
-                            </span>
+                          {s.startWeight != null && (
+                            <span>Başlangıç: {s.startWeight} kg</span>
                           )}
-                          {summary?.weightChange != null && (
+                          {s.endWeight != null && <span>Bitiş: {s.endWeight} kg</span>}
+                          {weightChange != null && (
                             <span>
-                              {summary.weightChange >= 0 ? "+" : ""}
-                              {summary.weightChange.toFixed(1)} kg
+                              {weightChange >= 0 ? "+" : ""}
+                              {weightChange.toFixed(1)} kg
                             </span>
                           )}
                           {summary && <span>Uyum: {summary.compliancePct}%</span>}
@@ -215,70 +273,6 @@ export function SeasonsListClient({
           </div>
         )}
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Yeni Süreç Başlat</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              startTransition(async () => {
-                await startSeason(new FormData(e.currentTarget));
-                toast({ title: "Süreç başlatıldı" });
-                router.refresh();
-              });
-            }}
-            className="space-y-3"
-          >
-            <div className="space-y-1">
-              <Label>Süreç adı</Label>
-              <Input name="name" placeholder="Definasyon Süreci" required />
-            </div>
-            <div className="space-y-1">
-              <Label>Süreç tipi</Label>
-              <select
-                name="type"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                defaultValue={SEASON_TYPES.DEFINITION}
-              >
-                {seasonTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {SEASON_TYPE_LABELS[t as SeasonType]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label>Başlangıç tarihi</Label>
-              <Input
-                name="startDate"
-                type="date"
-                defaultValue={toDateInputValue(today())}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>Başlangıç kilo</Label>
-                <Input name="startWeight" type="number" step="0.1" />
-              </div>
-              <div className="space-y-1">
-                <Label>Hedef kilo</Label>
-                <Input name="targetWeight" type="number" step="0.1" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Not</Label>
-              <Textarea name="note" rows={2} />
-            </div>
-            <Button type="submit" className="w-full h-11" disabled={isPending}>
-              Süreci Başlat
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
     </div>
   );
 }

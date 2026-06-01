@@ -127,6 +127,22 @@ export function DayDetailEdit({
               <CardTitle className="text-base">Diyet</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {(dietPlan?.targetCalories ||
+                dietPlan?.targetProtein ||
+                dietPlan?.targetCarbs ||
+                dietPlan?.targetFat) && (
+                <p className="text-xs text-muted-foreground">
+                  Hedef:{" "}
+                  {[
+                    dietPlan?.targetCalories && `${dietPlan.targetCalories} kcal`,
+                    dietPlan?.targetProtein && `${dietPlan.targetProtein}g P`,
+                    dietPlan?.targetCarbs && `${dietPlan.targetCarbs}g K`,
+                    dietPlan?.targetFat && `${dietPlan.targetFat}g Y`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
               <Textarea
                 name="dietText"
                 defaultValue={log.dietText ?? dietPlan?.content ?? ""}
@@ -134,6 +150,48 @@ export function DayDetailEdit({
                 placeholder="Günün diyet planı..."
                 className="text-sm"
               />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="calories">Kalori</Label>
+                  <Input
+                    id="calories"
+                    name="calories"
+                    type="number"
+                    defaultValue={log.calories ?? ""}
+                    placeholder={dietPlan?.targetCalories?.toString() ?? ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="protein">Protein (g)</Label>
+                  <Input
+                    id="protein"
+                    name="protein"
+                    type="number"
+                    defaultValue={log.protein ?? ""}
+                    placeholder={dietPlan?.targetProtein?.toString() ?? ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="carbs">Karbonhidrat (g)</Label>
+                  <Input
+                    id="carbs"
+                    name="carbs"
+                    type="number"
+                    defaultValue={log.carbs ?? ""}
+                    placeholder={dietPlan?.targetCarbs?.toString() ?? ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="fat">Yağ (g)</Label>
+                  <Input
+                    id="fat"
+                    name="fat"
+                    type="number"
+                    defaultValue={log.fat ?? ""}
+                    placeholder={dietPlan?.targetFat?.toString() ?? ""}
+                  />
+                </div>
+              </div>
               <label className="flex items-center gap-3 min-h-[44px]">
                 <input
                   type="checkbox"
@@ -162,11 +220,6 @@ export function DayDetailEdit({
                   color="supplement"
                 />
               ))}
-              <input
-                type="hidden"
-                name="supplementsDone"
-                value={suppTasks.every((t) => t.completed) ? "true" : "false"}
-              />
             </CardContent>
           </Card>
         )}
@@ -188,11 +241,6 @@ export function DayDetailEdit({
                   color="cycle"
                 />
               ))}
-              <input
-                type="hidden"
-                name="cycleDone"
-                value={cycleTasks.every((t) => t.completed) ? "true" : "false"}
-              />
             </CardContent>
           </Card>
         )}

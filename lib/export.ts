@@ -1,4 +1,27 @@
 import { prisma } from "./db";
+import { startOfDay } from "./date";
+import { normalizeActiveWorkoutTemplates } from "./normalize-workout-templates";
+import {
+  cleanupInvalidFutureDayTasks,
+  recalculateAllDayLogAggregateFlags,
+} from "./tasks";
+import { calcSessionVolume } from "./workout";
+
+/** Strip Prisma metadata and remap a foreign key through an id map. */
+export function remapForeignKey(
+  oldId: string | null | undefined,
+  idMap: Map<string, string>
+): string | null {
+  if (!oldId) return null;
+  return idMap.get(oldId) ?? null;
+}
+
+type RecordWithId = Record<string, unknown> & { id?: string };
+
+function stripMeta<T extends RecordWithId>(row: T) {
+  const { id, createdAt, updatedAt, ...rest } = row;
+  return rest;
+}
 
 export async function exportAllData() {
   const [
@@ -38,6 +61,32 @@ export async function exportAllData() {
   };
 }
 
+export async function backfillSessionVolumes() {
+  const sessions = await prisma.workoutSession.findMany({
+    where: { OR: [{ totalVolume: null }, { totalVolume: 0 }] },
+    include: {
+      setLogs: { where: { completed: true }, select: { weight: true, reps: true } },
+    },
+  });
+
+  for (const s of sessions) {
+    const vol = calcSessionVolume(s.setLogs);
+    if (vol > 0) {
+      await prisma.workoutSession.update({
+        where: { id: s.id },
+        data: { totalVolume: vol },
+      });
+    }
+  }
+}
+
+export async function runImportPostProcessing() {
+  await normalizeActiveWorkoutTemplates(prisma);
+  await cleanupInvalidFutureDayTasks();
+  await recalculateAllDayLogAggregateFlags();
+  await backfillSessionVolumes();
+}
+
 export async function importAllData(data: {
   settings?: unknown[];
   seasons?: unknown[];
@@ -48,86 +97,129 @@ export async function importAllData(data: {
   workoutSessions?: unknown[];
   setLogs?: unknown[];
 }) {
-  if (data.settings?.length) {
-    await prisma.userSetting.deleteMany();
-    for (const s of data.settings as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, ...rest } = s;
-      await prisma.userSetting.create({ data: rest as never });
-    }
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSetLog.deleteMany();
+    await tx.workoutSession.deleteMany();
+    await tx.workoutExerciseTemplate.deleteMany();
+    await tx.workoutTemplate.deleteMany();
+    await tx.dayTask.deleteMany();
+    await tx.plan.deleteMany();
+    await tx.dayLog.deleteMany();
+    await tx.season.deleteMany();
+    await tx.userSetting.deleteMany();
 
-  if (data.seasons?.length) {
-    await prisma.season.deleteMany();
-    for (const s of data.seasons as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, ...rest } = s;
-      await prisma.season.create({ data: rest as never });
-    }
-  }
+    const planIdMap = new Map<string, string>();
+    const templateIdMap = new Map<string, string>();
+    const sessionIdMap = new Map<string, string>();
 
-  if (data.plans?.length) {
-    await prisma.plan.deleteMany();
-    for (const p of data.plans as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, dayTasks, ...rest } = p;
-      await prisma.plan.create({ data: rest as never });
+    if (data.settings?.length) {
+      for (const s of data.settings as RecordWithId[]) {
+        await tx.userSetting.create({ data: stripMeta(s) as never });
+      }
     }
-  }
 
-  if (data.dayLogs?.length) {
-    await prisma.dayLog.deleteMany();
-    for (const l of data.dayLogs as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, ...rest } = l;
-      await prisma.dayLog.create({ data: rest as never });
+    if (data.seasons?.length) {
+      for (const s of data.seasons as RecordWithId[]) {
+        await tx.season.create({ data: stripMeta(s) as never });
+      }
     }
-  }
 
-  if (data.dayTasks?.length) {
-    await prisma.dayTask.deleteMany();
-    for (const t of data.dayTasks as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, plan, ...rest } = t;
-      await prisma.dayTask.create({ data: rest as never });
+    if (data.dayLogs?.length) {
+      for (const l of data.dayLogs as RecordWithId[]) {
+        const row = stripMeta(l);
+        await tx.dayLog.create({
+          data: {
+            ...row,
+            date: startOfDay(new Date(row.date as string | Date)),
+          } as never,
+        });
+      }
     }
-  }
 
-  if (data.workoutTemplates?.length) {
-    await prisma.workoutExerciseTemplate.deleteMany();
-    await prisma.workoutTemplate.deleteMany();
-    for (const wt of data.workoutTemplates as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, exercises, sessions, ...rest } = wt;
-      const created = await prisma.workoutTemplate.create({ data: rest as never });
-      const exs = exercises as Record<string, unknown>[] | undefined;
-      if (exs?.length) {
-        for (const ex of exs) {
-          const {
-            id: eid,
-            createdAt: ca,
-            updatedAt: ua,
-            workoutTemplateId,
-            workoutTemplate,
-            ...exRest
-          } = ex;
-          await prisma.workoutExerciseTemplate.create({
-            data: { ...exRest, workoutTemplateId: created.id } as never,
-          });
+    if (data.plans?.length) {
+      for (const p of data.plans as RecordWithId[]) {
+        const oldId = p.id as string;
+        const { dayTasks: _dt, ...rest } = stripMeta(p);
+        const created = await tx.plan.create({ data: rest as never });
+        if (oldId) planIdMap.set(oldId, created.id);
+      }
+    }
+
+    if (data.workoutTemplates?.length) {
+      for (const wt of data.workoutTemplates as RecordWithId[]) {
+        const oldId = wt.id as string;
+        const exercises = wt.exercises as RecordWithId[] | undefined;
+        const { exercises: _ex, sessions: _s, ...rest } = stripMeta(wt);
+        const created = await tx.workoutTemplate.create({ data: rest as never });
+        if (oldId) templateIdMap.set(oldId, created.id);
+
+        if (exercises?.length) {
+          for (const ex of exercises) {
+            const {
+              id: _eid,
+              workoutTemplateId: _wtid,
+              workoutTemplate: _wt,
+              ...exRest
+            } = stripMeta(ex);
+            await tx.workoutExerciseTemplate.create({
+              data: { ...exRest, workoutTemplateId: created.id } as never,
+            });
+          }
         }
       }
     }
-  }
 
-  if (data.workoutSessions?.length) {
-    await prisma.workoutSetLog.deleteMany();
-    await prisma.workoutSession.deleteMany();
-    for (const s of data.workoutSessions as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, setLogs, workoutTemplate, ...rest } = s;
-      await prisma.workoutSession.create({ data: rest as never });
-    }
-  }
+    if (data.workoutSessions?.length) {
+      for (const s of data.workoutSessions as RecordWithId[]) {
+        const oldId = s.id as string;
+        const { setLogs: _sl, workoutTemplate: _wt, ...rest } = stripMeta(s);
+        const oldTemplateId = s.workoutTemplateId as string | null | undefined;
+        const newTemplateId =
+          oldTemplateId && templateIdMap.has(oldTemplateId)
+            ? templateIdMap.get(oldTemplateId)!
+            : null;
 
-  if (data.setLogs?.length) {
-    for (const l of data.setLogs as Record<string, unknown>[]) {
-      const { id, createdAt, updatedAt, workoutSession, ...rest } = l;
-      await prisma.workoutSetLog.create({ data: rest as never });
+        const created = await tx.workoutSession.create({
+          data: {
+            ...rest,
+            date: startOfDay(new Date(rest.date as string | Date)),
+            workoutTemplateId: newTemplateId,
+          } as never,
+        });
+        if (oldId) sessionIdMap.set(oldId, created.id);
+      }
     }
-  }
+
+    if (data.setLogs?.length) {
+      for (const l of data.setLogs as RecordWithId[]) {
+        const { workoutSession: _ws, ...rest } = stripMeta(l);
+        const oldSessionId = l.workoutSessionId as string;
+        const newSessionId = sessionIdMap.get(oldSessionId);
+        if (!newSessionId) continue;
+        await tx.workoutSetLog.create({
+          data: { ...rest, workoutSessionId: newSessionId } as never,
+        });
+      }
+    }
+
+    if (data.dayTasks?.length) {
+      for (const t of data.dayTasks as RecordWithId[]) {
+        const { plan: _p, ...rest } = stripMeta(t);
+        const oldPlanId = t.planId as string;
+        const newPlanId = planIdMap.get(oldPlanId);
+        if (!newPlanId) continue;
+        await tx.dayTask.create({
+          data: {
+            ...rest,
+            date: startOfDay(new Date(rest.date as string | Date)),
+            planId: newPlanId,
+          } as never,
+        });
+      }
+    }
+  });
+
+  await runImportPostProcessing();
 
   return { success: true };
 }

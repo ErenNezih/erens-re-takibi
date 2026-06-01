@@ -62,8 +62,6 @@ export function TodayChecklist({
     const formData = new FormData(e.currentTarget);
     formData.set("date", date);
     formData.set("dietDone", log.dietDone ? "true" : "false");
-    formData.set("supplementsDone", log.supplementsDone ? "true" : "false");
-    formData.set("cycleDone", log.cycleDone ? "true" : "false");
     formData.set("bloodworkPlanned", log.bloodworkPlanned ? "true" : "false");
     formData.set("bloodworkDone", log.bloodworkDone ? "true" : "false");
     formData.set("dietText", log.dietText ?? "");
@@ -80,8 +78,6 @@ export function TodayChecklist({
     formData.set("date", date);
     formData.set("weight", weight?.toString() ?? "");
     formData.set("dietDone", checked ? "true" : "false");
-    formData.set("supplementsDone", log.supplementsDone ? "true" : "false");
-    formData.set("cycleDone", log.cycleDone ? "true" : "false");
     formData.set("bloodworkPlanned", log.bloodworkPlanned ? "true" : "false");
     formData.set("bloodworkDone", log.bloodworkDone ? "true" : "false");
     formData.set("dietText", log.dietText ?? dietPlan?.content ?? "");

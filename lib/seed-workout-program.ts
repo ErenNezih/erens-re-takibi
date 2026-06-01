@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { WORKOUT_GROUPS } from "./workout-groups";
+import { normalizeActiveWorkoutTemplates } from "./normalize-workout-templates";
 
 export const TRAINING_2026_PROGRAM = "TRAINING 2026 HYPERTROPHY VOL.1";
 
@@ -8,6 +9,13 @@ type ExerciseDef = {
   sets: number;
   targetReps: string;
   note: string;
+};
+
+export type TemplateDef = {
+  weekday: number;
+  name: string;
+  workoutGroup: string;
+  exercises: ExerciseDef[];
 };
 
 const PUSH_EXERCISES: ExerciseDef[] = [
@@ -38,12 +46,7 @@ const LEGS_EXERCISES: ExerciseDef[] = [
   { name: "Standing Calf Raise", sets: 4, targetReps: "12-15", note: "Failure" },
 ];
 
-const TEMPLATE_DEFS: {
-  weekday: number;
-  name: string;
-  workoutGroup: string;
-  exercises: ExerciseDef[];
-}[] = [
+export const TEMPLATE_DEFS: TemplateDef[] = [
   { weekday: 1, name: "PUSH", workoutGroup: WORKOUT_GROUPS.PUSH, exercises: PUSH_EXERCISES },
   { weekday: 4, name: "PUSH", workoutGroup: WORKOUT_GROUPS.PUSH, exercises: PUSH_EXERCISES },
   { weekday: 2, name: "PULL", workoutGroup: WORKOUT_GROUPS.PULL, exercises: PULL_EXERCISES },
@@ -53,29 +56,5 @@ const TEMPLATE_DEFS: {
 ];
 
 export async function seedTraining2026Program(prisma: PrismaClient) {
-  for (const def of TEMPLATE_DEFS) {
-    const exists = await prisma.workoutTemplate.findFirst({
-      where: { weekday: def.weekday, name: def.name },
-    });
-    if (exists) continue;
-
-    await prisma.workoutTemplate.create({
-      data: {
-        name: def.name,
-        weekday: def.weekday,
-        workoutGroup: def.workoutGroup,
-        programName: TRAINING_2026_PROGRAM,
-        active: true,
-        exercises: {
-          create: def.exercises.map((ex, order) => ({
-            name: ex.name,
-            sets: ex.sets,
-            targetReps: ex.targetReps,
-            note: ex.note,
-            order,
-          })),
-        },
-      },
-    });
-  }
+  await normalizeActiveWorkoutTemplates(prisma);
 }

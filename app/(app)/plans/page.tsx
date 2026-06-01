@@ -2,7 +2,7 @@ import { PlansClient } from "@/components/plans-client";
 import { getPlans } from "@/lib/actions/plans";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkoutTemplateManager } from "@/components/workout-plans-tab";
-import { getAllTemplates } from "@/lib/workout";
+import { getActiveProgramTemplates, getInactiveTemplates } from "@/lib/workout";
 import { PLAN_TYPES } from "@/lib/tasks";
 
 interface PlansPageProps {
@@ -12,7 +12,11 @@ interface PlansPageProps {
 export default async function PlansPage({ searchParams }: PlansPageProps) {
   const params = await searchParams;
   const tab = params.tab ?? PLAN_TYPES.DIET;
-  const [plans, templates] = await Promise.all([getPlans(), getAllTemplates()]);
+  const [plans, activeTemplates, inactiveTemplates] = await Promise.all([
+    getPlans(),
+    getActiveProgramTemplates(),
+    getInactiveTemplates(),
+  ]);
 
   return (
     <div>
@@ -38,7 +42,10 @@ export default async function PlansPage({ searchParams }: PlansPageProps) {
           <PlansClient plans={plans} activeTab={PLAN_TYPES.BLOODWORK} />
         </TabsContent>
         <TabsContent value="WORKOUT" className="mt-4">
-          <WorkoutTemplateManager templates={templates} />
+          <WorkoutTemplateManager
+            activeTemplates={activeTemplates}
+            inactiveTemplates={inactiveTemplates}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -4,7 +4,7 @@ import {
   getSeasonHistory,
   ensureSeasonFromSettings,
 } from "@/lib/season";
-import { getSeasonListSummaries } from "@/lib/season-report";
+import { getSeasonListSummariesLight, getSeasonReport } from "@/lib/season-report";
 
 export default async function SeasonsPage() {
   await ensureSeasonFromSettings();
@@ -14,11 +14,15 @@ export default async function SeasonsPage() {
   ]);
 
   const allSeasons = [...(activeSeason ? [activeSeason] : []), ...history];
-  const summaries = await getSeasonListSummaries(allSeasons);
+  const [summaries, activeReport] = await Promise.all([
+    getSeasonListSummariesLight(allSeasons),
+    activeSeason ? getSeasonReport(activeSeason.id) : Promise.resolve(null),
+  ]);
 
   return (
     <SeasonsListClient
       activeSeason={activeSeason}
+      activeReport={activeReport}
       history={history}
       summaries={summaries}
     />
