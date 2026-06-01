@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserSetting {
+  id               String   @id @default(cuid())
+  startDate        DateTime @default(now())
+  startWeight      Float?
+  targetWeight     Float?
+  targetWaist      Float?
+  calorieTargetMin Int      @default(1500)
+  calorieTargetMax Int      @default(1800)
+  proteinTarget    Int      @default(150)
+  carbTarget       Int      @default(150)
+  fatTarget        Int      @default(50)
+  waterTargetMin   Float    @default(2.5)
+  waterTargetMax   Float    @default(3.5)
+  stepTargetMin    Int      @default(10000)
+  stepTargetMax    Int      @default(15000)
+  theme            String   @default("dark")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model DailyLog {
+  id             String   @id @default(cuid())
+  date           DateTime @unique
+  morningWeight  Float?
+  eveningWeight  Float?
+  caloriesIn     Int?
+  protein        Int?
+  carbs          Int?
+  fat            Int?
+  activeCalories Int?
+  steps          Int?
+  waterLiters    Float?
+  sleepHours     Float?
+  energyLevel    Int?
+  hungerLevel    Int?
+  workoutDone    Boolean  @default(false)
+  cardioDone     Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model BodyMeasurement {
+  id                 String   @id @default(cuid())
+  date               DateTime
+  weight             Float?
+  waist              Float?
+  abdomen            Float?
+  arm                Float?
+  shoulder           Float?
+  chest              Float?
+  hip                Float?
+  thigh              Float?
+  neck               Float?
+  estimatedBodyFat   Float?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model MealLog {
+  id        String   @id @default(cuid())
+  date      DateTime
+  mealName  String
+  time      String?
+  foodName  String
+  amount    String?
+  calories  Int?
+  protein   Int?
+  carbs     Int?
+  fat       Int?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkoutSession {
+  id        String            @id @default(cuid())
+  date      DateTime
+  title     String
+  bodyPart  String
+  completed Boolean           @default(false)
+  notes     String?
+  exercises WorkoutExercise[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model WorkoutExercise {
+  id               String         @id @default(cuid())
+  workoutSessionId String
+  workoutSession   WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+  exerciseName     String
+  sets             Int?
+  reps             Int?
+  weight           Float?
+  rpe              Int?
+  toFailure        Boolean        @default(false)
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model PlanItem {
+  id          String   @id @default(cuid())
+  title       String
+  type        String
+  date        DateTime
+  time        String?
+  repeatType  String   @default("once")
+  description String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SubstanceLog {
+  id               String    @id @default(cuid())
+  name             String
+  category         String
+  abbreviation     String?
+  startDate        DateTime
+  endDate          DateTime?
+  frequency        String?
+  userNotes        String?
+  doctorSupervised Boolean   @default(false)
+  active           Boolean   @default(true)
+  warningAccepted  Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Phase {
+  id            String    @id @default(cuid())
+  name          String
+  startDate     DateTime
+  endDate       DateTime?
+  goal          String?
+  calorieTarget Int?
+  stepTarget    Int?
+  notes         String?
+  active        Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model ProgressPhoto {
+  id        String   @id @default(cuid())
+  date      DateTime
+  photoType String
+  imageUrl  String?
+  notes     String?
+  weight    Float?
+  waist     Float?
+  phase     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  date      DateTime
+  title     String?
+  content   String
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
