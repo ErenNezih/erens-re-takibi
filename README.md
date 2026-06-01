@@ -33,35 +33,47 @@ Tarayıcıda `http://localhost:3000` — varsayılan şifre: `classic2026`
 | `APP_PASSWORD` | Uygulama giriş şifresi |
 | `SESSION_SECRET` | Oturum token hash secret |
 
-## Vercel Deploy
+## Vercel + Neon Deploy
 
-### 1. Postgres ekle
+### 1. Neon entegrasyonu (ekran görüntüsündeki modal)
 
-Vercel Dashboard → Projeniz → **Storage** → **Create Database** → **Postgres**
+| Alan | Ne seç |
+|------|--------|
+| Connect a Project | `projeclassic` |
+| Environments | **Production** + **Preview** işaretle |
+| Custom Prefix | **`STORAGE` değil — boş bırak veya `DATABASE` yaz** |
+| Sensitive | Açık kalabilir |
 
-### 2. Environment Variables ayarla
+> Prefix `STORAGE` olursa değişken `STORAGE_URL` olur; Prisma **`DATABASE_URL`** arar. Prefix boş → `DATABASE_URL` otomatik oluşur.
 
-**Settings → Environment Variables** bölümüne şunları ekleyin:
+**Connect** → **Continue** ile bitir.
 
-| Key | Value |
-|-----|-------|
-| `DATABASE_URL` | Vercel Postgres `.env.local` sekmesindeki **`POSTGRES_PRISMA_URL`** değeri |
-| `APP_PASSWORD` | Güçlü bir şifre (örn. rastgele 32 karakter) |
+### 2. Vercel Environment Variables (manuel kontrol)
+
+Neon bağlandıktan sonra **Settings → Environment Variables** içinde şunlar olmalı:
+
+| Key | Neon'dan hangi değer |
+|-----|----------------------|
+| `DATABASE_URL` | `POSTGRES_PRISMA_URL` (pooler + `connect_timeout=15`) |
+| `DIRECT_URL` | `DATABASE_URL_UNPOOLED` veya `POSTGRES_URL_NON_POOLING` |
+| `APP_PASSWORD` | Kendi giriş şifren |
 | `SESSION_SECRET` | Rastgele uzun string |
 
-> **Önemli:** `DATABASE_URL` boş bırakılırsa build şu hatayı verir:  
-> `Environment variable not found: DATABASE_URL`
+Neon otomatik eklemediyse yukarıdaki iki DB değişkenini Neon dashboard → Connection string sekmesinden kopyala-yapıştır.
 
 ### 3. Redeploy
 
-Env değişkenlerini ekledikten sonra **Deployments → Redeploy** yapın.
+Env kayıtlıyken **Deployments → Redeploy**. Build sırasında `prisma db push` tabloları oluşturur.
 
-Build sırasında `prisma db push` otomatik çalışır ve tablolar oluşturulur.  
-İlk deploy sonrası seed için bir kez Vercel CLI veya local'den:
+### 4. İlk seed (bir kez)
+
+Deploy sonrası local'den veya Vercel CLI ile:
 
 ```bash
-DATABASE_URL="..." npm run db:seed
+npm run db:seed
 ```
+
+(`DATABASE_URL` ve `DIRECT_URL` ortamda tanımlı olmalı)
 
 ## Önemli Not
 
