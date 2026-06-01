@@ -101,6 +101,7 @@ export function CalendarMonthView({ year, month, statusMap }: CalendarMonthViewP
                   ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                   : "border-border bg-card hover:bg-accent/50",
                 showCompleteBadge && "border-success/50 bg-success/5",
+                showIncompleteBadge && isPast && "opacity-60",
                 showIncompleteBadge && isToday && "border-supplement/50"
               )}
             >

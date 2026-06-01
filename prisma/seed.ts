@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { seedTraining2026Program } from "../lib/seed-workout-program";
 
 const prisma = new PrismaClient();
 
@@ -40,6 +41,8 @@ async function main() {
     console.log("Weight backfill skipped (column may not exist yet)");
   });
 
+  await seedTraining2026Program(prisma);
+
   const planCount = await prisma.plan.count();
   if (planCount === 0) {
     await prisma.plan.createMany({
@@ -76,35 +79,6 @@ async function main() {
         },
       ],
     });
-  }
-
-  const templateCount = await prisma.workoutTemplate.count();
-  if (templateCount === 0) {
-    const push = await prisma.workoutTemplate.create({
-      data: {
-        name: "Push",
-        weekday: 1,
-        active: true,
-        exercises: {
-          create: [
-            { name: "Chest Press", sets: 4, targetReps: "8-12", order: 0 },
-            { name: "Lat Pulldown", sets: 4, targetReps: "10-12", order: 1 },
-            { name: "Lateral Raise", sets: 3, targetReps: "12-15", order: 2 },
-          ],
-        },
-      },
-    });
-
-    await prisma.workoutTemplate.createMany({
-      data: [
-        { name: "Pull", weekday: 2, active: true },
-        { name: "Legs", weekday: 3, active: true },
-        { name: "Upper", weekday: 5, active: true },
-        { name: "Lower", weekday: 6, active: true },
-      ],
-    });
-
-    console.log("Created workout template:", push.name);
   }
 
   console.log("Seed completed!");

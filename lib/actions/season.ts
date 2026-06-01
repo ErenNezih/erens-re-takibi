@@ -11,7 +11,7 @@ export async function startSeason(formData: FormData) {
     data: { active: false },
   });
 
-  await prisma.season.create({
+  const season = await prisma.season.create({
     data: {
       name: (formData.get("name") as string) || "Yeni Süreç",
       type: (formData.get("type") as string) || SEASON_TYPES.OTHER,
@@ -24,7 +24,8 @@ export async function startSeason(formData: FormData) {
   });
 
   revalidatePath("/calendar");
-  revalidatePath("/season");
+  revalidatePath("/seasons");
+  revalidatePath(`/seasons/${season.id}`);
   return { success: true };
 }
 
@@ -45,7 +46,8 @@ export async function endSeason(formData: FormData) {
   });
 
   revalidatePath("/calendar");
-  revalidatePath("/season");
+  revalidatePath("/seasons");
+  revalidatePath(`/seasons/${active.id}`);
   return { success: true };
 }
 

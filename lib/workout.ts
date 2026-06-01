@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { getWeekdayNumber, startOfDay } from "./date";
+import { inferGroupFromName } from "./workout-groups";
 
 export function calcSessionVolume(
   setLogs: { weight: number | null; reps: number | null }[]
@@ -32,17 +33,23 @@ export async function startWorkoutSession(date: Date, templateId?: string) {
   if (existing) return existing;
 
   let title = "Antrenman";
+  let workoutGroup: string | null = null;
+
   if (templateId) {
     const tpl = await prisma.workoutTemplate.findUnique({
       where: { id: templateId },
       include: { exercises: { orderBy: { order: "asc" } } },
     });
-    if (tpl) title = tpl.name;
+    if (tpl) {
+      title = tpl.name;
+      workoutGroup = tpl.workoutGroup ?? inferGroupFromName(tpl.name);
+    }
   } else {
     const tpl = await getTodayTemplate(d);
     if (tpl) {
       templateId = tpl.id;
       title = tpl.name;
+      workoutGroup = tpl.workoutGroup ?? inferGroupFromName(tpl.name);
     }
   }
 
@@ -51,6 +58,7 @@ export async function startWorkoutSession(date: Date, templateId?: string) {
       date: d,
       workoutTemplateId: templateId ?? null,
       title,
+      workoutGroup,
       startedAt: new Date(),
       completed: false,
     },

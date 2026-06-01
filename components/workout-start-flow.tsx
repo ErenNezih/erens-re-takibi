@@ -91,6 +91,9 @@ export function WorkoutStartFlow({ sessionId, exercises, existingLogs }: Workout
           {exercise.targetReps && (
             <p className="text-sm text-muted-foreground">Hedef: {exercise.targetReps} tekrar</p>
           )}
+          {exercise.note && (
+            <p className="text-sm text-muted-foreground">Not: {exercise.note}</p>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

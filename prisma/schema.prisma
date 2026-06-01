@@ -88,14 +88,18 @@ model DayTask {
 }
 
 model WorkoutTemplate {
-  id        String                    @id @default(cuid())
-  name      String
-  weekday   Int
-  active    Boolean                   @default(true)
-  createdAt DateTime                  @default(now())
-  updatedAt DateTime                  @updatedAt
-  exercises WorkoutExerciseTemplate[]
-  sessions  WorkoutSession[]
+  id           String                    @id @default(cuid())
+  name         String
+  weekday      Int
+  workoutGroup String?
+  programName  String?
+  active       Boolean                   @default(true)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  exercises    WorkoutExerciseTemplate[]
+  sessions     WorkoutSession[]
+
+  @@unique([weekday, name])
 }
 
 model WorkoutExerciseTemplate {
@@ -117,6 +121,7 @@ model WorkoutSession {
   workoutTemplateId String?
   workoutTemplate   WorkoutTemplate? @relation(fields: [workoutTemplateId], references: [id], onDelete: SetNull)
   title             String
+  workoutGroup      String?
   completed         Boolean          @default(false)
   totalVolume       Float?
   startedAt         DateTime?

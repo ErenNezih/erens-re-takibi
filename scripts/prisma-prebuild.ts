@@ -17,3 +17,4 @@ if (!process.env.DIRECT_URL) {
 
 execSync("npx prisma generate", { stdio: "inherit" });
 execSync("npx prisma db push --skip-generate --accept-data-loss", { stdio: "inherit" });
+execSync("npx tsx prisma/seed.ts", { stdio: "inherit" });
