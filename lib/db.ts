@@ -16,19 +16,7 @@ export async function getSettings() {
   let settings = await prisma.userSetting.findFirst();
   if (!settings) {
     settings = await prisma.userSetting.create({
-      data: {
-        startDate: new Date("2026-06-01"),
-        calorieTargetMin: 1500,
-        calorieTargetMax: 1800,
-        proteinTarget: 150,
-        carbTarget: 150,
-        fatTarget: 50,
-        waterTargetMin: 2.5,
-        waterTargetMax: 3.5,
-        stepTargetMin: 10000,
-        stepTargetMax: 15000,
-        theme: "dark",
-      },
+      data: { startDate: new Date("2026-06-01"), theme: "dark" },
     });
   }
   return settings;

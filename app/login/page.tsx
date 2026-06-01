@@ -16,10 +16,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-
-    const formData = new FormData(e.currentTarget);
-    const result = await loginAction(formData);
-
+    const result = await loginAction(new FormData(e.currentTarget));
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -28,15 +25,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
             <Dumbbell className="h-7 w-7 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Classic Physique Tracker</CardTitle>
-          <CardDescription>
-            Kişisel definasyon ve vücut takip paneli
-          </CardDescription>
+          <CardTitle className="text-xl">FitCycle</CardTitle>
+          <CardDescription>Mobile Tracker</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -44,22 +39,12 @@ export default function LoginPage() {
               <Label htmlFor="password">Şifre</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Uygulama şifrenizi girin"
-                  className="pl-10"
-                  required
-                  autoFocus
-                />
+                <Input id="password" name="password" type="password" className="pl-10 h-12" required autoFocus />
               </div>
             </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full h-12" disabled={loading}>
+              {loading ? "Giriş..." : "Giriş Yap"}
             </Button>
           </form>
         </CardContent>

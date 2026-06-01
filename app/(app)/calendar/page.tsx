@@ -1,15 +1,22 @@
-import { format } from "date-fns";
-import { getPlanItems } from "@/lib/actions/calendar";
-import { CalendarClient } from "@/components/calendar/calendar-client";
+import { CalendarMonthView } from "@/components/calendar-month-view";
+import { getMonthDayStatuses } from "@/lib/tasks";
 
 interface CalendarPageProps {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   const params = await searchParams;
-  const month = params.month ?? format(new Date(), "yyyy-MM");
-  const items = await getPlanItems(month);
+  const now = new Date();
+  const year = parseInt(params.year ?? String(now.getFullYear()), 10);
+  const month = parseInt(params.month ?? String(now.getMonth() + 1), 10);
 
-  return <CalendarClient items={items} month={month} />;
+  const statusMap = await getMonthDayStatuses(year, month);
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-4">Takvim</h1>
+      <CalendarMonthView year={year} month={month} statusMap={statusMap} />
+    </div>
+  );
 }

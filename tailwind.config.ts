@@ -51,6 +51,10 @@ const config: Config = {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        workout: "hsl(var(--workout))",
+        supplement: "hsl(var(--supplement))",
+        cycle: "hsl(var(--cycle))",
+        bloodwork: "hsl(var(--bloodwork))",
         chart: {
           "1": "hsl(var(--chart-1))",
           "2": "hsl(var(--chart-2))",

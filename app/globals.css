@@ -24,15 +24,14 @@
     --success-foreground: 0 0% 98%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 98%;
+    --workout: 217 91% 60%;
+    --supplement: 45 93% 47%;
+    --cycle: 0 72% 51%;
+    --bloodwork: 270 60% 55%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 217 91% 60%;
     --radius: 0.75rem;
-    --chart-1: 217 91% 60%;
-    --chart-2: 142 76% 36%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 0 84% 60%;
   }
 
   .dark {
@@ -56,22 +55,17 @@
     --success-foreground: 0 0% 98%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 98%;
+    --workout: 217 91% 60%;
+    --supplement: 45 93% 47%;
+    --cycle: 0 62% 50%;
+    --bloodwork: 270 60% 55%;
     --border: 240 6% 18%;
     --input: 240 6% 18%;
     --ring: 217 91% 60%;
-    --chart-1: 217 91% 60%;
-    --chart-2: 142 70% 45%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 0 62% 50%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
 }

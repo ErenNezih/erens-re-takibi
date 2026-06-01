@@ -1,5 +1,5 @@
 {
-  "name": "classic-physique-tracker",
+  "name": "fitcycle-mobile-tracker",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,7 @@
     "build": "tsx scripts/prisma-prebuild.ts && next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "prisma db push",
+    "db:push": "prisma db push --accept-data-loss",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "tsx scripts/prisma-generate.ts"

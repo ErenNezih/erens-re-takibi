@@ -1,16 +1,14 @@
-import { Sidebar } from "@/components/layout/sidebar";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <main className="lg:pl-64 pt-14 lg:pt-0">
-        <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-          {children}
-        </div>
+    <div className="min-h-screen bg-background pb-20">
+      <main className="max-w-lg mx-auto px-4 py-4">
+        {children}
       </main>
+      <MobileBottomNav />
     </div>
   );
 }

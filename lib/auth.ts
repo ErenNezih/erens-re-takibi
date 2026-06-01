@@ -1,14 +1,12 @@
 import { cookies } from "next/headers";
 import { createHash } from "crypto";
 
-const SESSION_COOKIE = "cpt_session";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+export const SESSION_COOKIE = "fcm_session";
+const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 function hashToken(password: string): string {
   const secret = process.env.SESSION_SECRET || "default-secret";
-  return createHash("sha256")
-    .update(`${password}:${secret}`)
-    .digest("hex");
+  return createHash("sha256").update(`${password}:${secret}`).digest("hex");
 }
 
 export async function verifyPassword(password: string): Promise<boolean> {
@@ -37,13 +35,10 @@ export async function destroySession(): Promise<void> {
 export async function isAuthenticated(): Promise<boolean> {
   const appPassword = process.env.APP_PASSWORD;
   if (!appPassword) return false;
-
   const cookieStore = await cookies();
   const session = cookieStore.get(SESSION_COOKIE);
   if (!session?.value) return false;
-
-  const expectedToken = hashToken(appPassword);
-  return session.value === expectedToken;
+  return session.value === hashToken(appPassword);
 }
 
 export function verifySessionToken(token: string): boolean {
@@ -51,5 +46,3 @@ export function verifySessionToken(token: string): boolean {
   if (!appPassword) return false;
   return token === hashToken(appPassword);
 }
-
-export { SESSION_COOKIE, SESSION_MAX_AGE };
