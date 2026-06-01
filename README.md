@@ -61,6 +61,8 @@ Neon bağlandıktan sonra **Settings → Environment Variables** içinde şunlar
 
 Neon otomatik eklemediyse yukarıdaki iki DB değişkenini Neon dashboard → Connection string sekmesinden kopyala-yapıştır.
 
+> `DIRECT_URL` eklemezsen build script Neon'un `POSTGRES_URL_NON_POOLING` veya `DATABASE_URL_UNPOOLED` değerlerini otomatik kullanır.
+
 ### 3. Redeploy
 
 Env kayıtlıyken **Deployments → Redeploy**. Build sırasında `prisma db push` tabloları oluşturur.
