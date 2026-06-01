@@ -5,8 +5,11 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
-  await prisma.userSetting.deleteMany();
-  await prisma.phase.deleteMany();
+  const existingSettings = await prisma.userSetting.findFirst();
+  if (existingSettings) {
+    console.log("Settings already exist, skipping seed.");
+    return;
+  }
 
   await prisma.userSetting.create({
     data: {
@@ -24,16 +27,19 @@ async function main() {
     },
   });
 
-  await prisma.phase.create({
-    data: {
-      name: "Definasyon",
-      startDate: new Date("2026-06-01"),
-      goal: "Vücut yağ oranını düşürmek, kilo ve ölçü takibi yapmak, antrenman ve beslenme disiplinini kayıt altına almak.",
-      calorieTarget: 1650,
-      stepTarget: 12000,
-      active: true,
-    },
-  });
+  const existingPhase = await prisma.phase.findFirst();
+  if (!existingPhase) {
+    await prisma.phase.create({
+      data: {
+        name: "Definasyon",
+        startDate: new Date("2026-06-01"),
+        goal: "Vücut yağ oranını düşürmek, kilo ve ölçü takibi yapmak, antrenaman ve beslenme disiplinini kayıt altına almak.",
+        calorieTarget: 1650,
+        stepTarget: 12000,
+        active: true,
+      },
+    });
+  }
 
   console.log("Seed completed!");
 }
